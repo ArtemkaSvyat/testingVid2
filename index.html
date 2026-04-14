@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D облёт здания</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none; /* чтобы случайно не выделить видео */
+        }
+        body {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: system-ui, 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .viewer {
+            position: relative;
+            max-width: 1200px;
+            width: 100%;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5);
+            background: #000;
+        }
+        .media-container {
+            position: relative;
+            aspect-ratio: 16 / 9; /* подстрой под свои рендеры */
+            background: #000;
+        }
+        .media-container img,
+        .media-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* или contain, если нужны все края */
+        }
+        .media-container video {
+            z-index: 2;
+        }
+        .media-container img {
+            z-index: 1;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+        }
+        button {
+            background: #2c3e66;
+            border: none;
+            color: white;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        button:hover {
+            background: #1e2a4a;
+            transform: scale(1.02);
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+<div class="viewer">
+    <div class="media-container">
+        <!-- Статичное изображение по умолчанию (вид спереди) -->
+        <img id="staticImage" src="renders/front_view.png" alt="Здание, вид спереди">
+        <!-- Видео изначально скрыто -->
+        <video id="transitionVideo" src="" preload="auto" style="display: none;"></video>
+    </div>
+    <div class="controls">
+        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Облёт → направо</button>
+        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Облёт → налево</button>
+        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Приблизить фасад</button>
+        <!-- добавь другие кнопки -->
+    </div>
+</div>
+
+<script>
+    const staticImg = document.getElementById('staticImage');
+    const videoElem = document.getElementById('transitionVideo');
+
+    // Функция для запуска перелёта
+    function playTransition(videoSrc, finalImageSrc) {
+        // Прячем статику, показываем видео
+        staticImg.style.display = 'none';
+        videoElem.style.display = 'block';
+        
+        // Устанавливаем источник и перезагружаем (на случай, если видео уже было)
+        videoElem.src = videoSrc;
+        videoElem.load();
+        
+        // Запускаем воспроизведение (пользователь уже кликнул по кнопке — автополитика разрешает)
+        const playPromise = videoElem.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.warn('Автовоспроизведение заблокировано:', error);
+                // Резерв: показать контролы? но обычно клик по кнопке разблокирует.
+                // Можно попросить пользователя кликнуть ещё раз — но редко требуется.
+            });
+        }
+        
+        // Когда видео закончится — возвращаем статику (уже новый ракурс)
+        videoElem.onended = () => {
+            staticImg.src = finalImageSrc;
+            staticImg.style.display = 'block';
+            videoElem.style.display = 'none';
+            videoElem.onended = null; // очищаем
+        };
+    }
+    
+    // Навешиваем обработчики на все кнопки
+    document.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const videoPath = btn.getAttribute('data-video');
+            const finalImagePath = btn.getAttribute('data-final-image');
+            if (videoPath && finalImagePath) {
+                playTransition(videoPath, finalImagePath);
+            }
+        });
+    });
+    
+    // Предзагрузка видео (опционально, но улучшит отклик)
+    // Можно предзагрузить все видео, указанные в data-video, скрытым тегом <link rel=preload>
+    // или просто установить preload="auto" в теге video, как сделано выше.
+</script>
+</body>
+</html>
