@@ -251,46 +251,83 @@
         }
 
         // Функция воспроизведения перелёта (без display:none, только opacity + z-index)
-        function playTransition(videoSrc, finalImageSrc) {
-            // Останавливаем предыдущее воспроизведение, если оно было
-            videoElem.pause();
-            // Меняем слои: видео становится видимым, картинка — невидимой
-            videoElem.style.opacity = '1';
-            videoElem.style.zIndex = '2';
-            staticImg.style.opacity = '0';
-            staticImg.style.zIndex = '1';
-            
-            // Убеждаемся, что видео настроено для inline-воспроизведения
-            videoElem.muted = true;
-            videoElem.playsInline = true;
-            videoElem.webkitPlaysInline = true;
-            
-            // Подставляем новый источник и загружаем
-            videoElem.src = videoSrc;
-            videoElem.load();
-            
-            // Запускаем воспроизведение
-            const playPromise = videoElem.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(err => {
-                    console.warn('Автовоспроизведение заблокировано:', err);
-                    // Если блокировка, можно показать сообщение, но по клику обычно всё ок
-                });
-            }
-            
-            // По окончании видео меняем картинку и возвращаем слои
-            videoElem.onended = () => {
-                // Меняем src картинки на новый ракурс
-                staticImg.src = finalImageSrc;
-                // Возвращаем видимость картинке, прячем видео
-                staticImg.style.opacity = '1';
-                staticImg.style.zIndex = '1';
-                videoElem.style.opacity = '0';
-                videoElem.style.zIndex = '2';
-                videoElem.onended = null;
-            };
+        // Функция для запуска перелёта (улучшенная)
+function playTransition(videoSrc, finalImageSrc) {
+    // Останавливаем предыдущее воспроизведение, если оно было
+    videoElem.pause();
+    
+    // Ставим видео на начальную позицию (на случай, если оно было доиграно)
+    videoElem.currentTime = 0;
+    
+    // Делаем видео видимым, но картинка пока остаётся сверху
+    videoElem.style.opacity = '1';
+    videoElem.style.zIndex = '2';
+    staticImg.style.zIndex = '1';
+    staticImg.style.opacity = '1'; // картинка пока видна
+    
+    // Устанавливаем источник и загружаем
+    videoElem.src = videoSrc;
+    videoElem.load();
+    
+    // Убеждаемся, что настройки для iOS соблюдены
+    videoElem.muted = true;
+    videoElem.playsInline = true;
+    videoElem.webkitPlaysInline = true;
+    
+    // Функция, которая сработает, когда видео отрисовало первый кадр
+    const onFirstFrame = () => {
+        // Теперь можно безопасно скрыть картинку
+        staticImg.style.opacity = '0';
+        // Убираем обработчики, чтобы не сработали повторно
+        videoElem.removeEventListener('playing', onFirstFrame);
+        videoElem.removeEventListener('timeupdate', onFirstFrame);
+    };
+    
+    // Событие 'playing' срабатывает, когда видео начинает воспроизведение (первый кадр уже есть)
+    videoElem.addEventListener('playing', onFirstFrame);
+    // Подстраховка: если 'playing' не сработает, используем 'timeupdate' (первый тик)
+    videoElem.addEventListener('timeupdate', onFirstFrame, { once: true });
+    
+    // Обработчик для ранней подмены картинки в конце
+    let endedHandlerApplied = false;
+    const onTimeUpdate = () => {
+        const timeLeft = videoElem.duration - videoElem.currentTime;
+        // Если до конца осталось менее 0.1 секунды и ещё не подменяли картинку
+        if (timeLeft < 0.1 && !endedHandlerApplied) {
+            endedHandlerApplied = true;
+            // Меняем картинку на финальный рендер
+            staticImg.src = finalImageSrc;
+            // Оставляем картинку невидимой, но уже с новым src
+            // Когда видео закончится, сделаем её видимой
         }
-        
+    };
+    
+    // Обработчик окончания видео
+    const onEnded = () => {
+        // Делаем картинку видимой (она уже содержит финальный кадр)
+        staticImg.style.opacity = '1';
+        // Прячем видео
+        videoElem.style.opacity = '0';
+        videoElem.style.zIndex = '1';
+        // Чистим обработчики
+        videoElem.removeEventListener('timeupdate', onTimeUpdate);
+        videoElem.removeEventListener('ended', onEnded);
+    };
+    
+    videoElem.addEventListener('timeupdate', onTimeUpdate);
+    videoElem.addEventListener('ended', onEnded);
+    
+    // Запускаем воспроизведение
+    const playPromise = videoElem.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.warn('Автовоспроизведение заблокировано:', error);
+            // Если блокировка — откатываем изменения
+            staticImg.style.opacity = '1';
+            videoElem.style.opacity = '0';
+        });
+    }
+}
         // Навешиваем обработчики на кнопки после загрузки DOM
         document.addEventListener('DOMContentLoaded', () => {
             // Запускаем предзагрузку
