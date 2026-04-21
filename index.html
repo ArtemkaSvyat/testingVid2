@@ -196,12 +196,11 @@
         // ========== ОСНОВНАЯ ЛОГИКА ==========
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
-        const START_FRAME = 1;          // стартовый кадр (теперь 1)
+        const START_FRAME = 270;
         
-        let currentBaseFrame = START_FRAME;   // текущий базовый кадр (для интерфейса)
+        let currentState = "genplan";
         let selectedQueue = null;
         let isPlaying = false;
-        let currentLoopHandler = null;
         
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
@@ -210,107 +209,14 @@
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
-        // ========== КАРТА ЛУПОВ (диапазоны для статичной анимации) ==========
-        // Ключ — базовый кадр (точка остановки), значение — [начало_лупа, конец_лупа]
-        const loopMap = {
-            1:     [1, 150],      // генплан
-            344:   [345, 464],
-            509:   [510, 644],
-            690:   [691, 779],
-            820:   [1, 150],      // генплан
-            935:   [936, 992],
-            1035:  [1036, 1089],
-            1135:  [1136, 1182],
-            1225:  [1, 150],      // генплан
-            1540:  [1, 150],
-            1875:  [1, 150],
-            2128:  [1, 150]
-        };
-        
-        // ========== ПРАВИЛА НАВИГАЦИИ (базовые кадры и переходы) ==========
-        const navRules = {
-            1:     { left: [896,935], right: [295,344] },
-            820:   { left: [896,935], right: [295,344] },
-            1225:  { left: [896,935], right: [295,344] },
-            1540:  { left: [896,935], right: [295,344] },
-            1875:  { left: [896,935], right: [295,344] },
-            2128:  { left: [896,935], right: [295,344] },
-            344:   { left: [1183,1225], right: [465,509] },
-            1135:  { left: [1183,1225], right: [465,509] },
-            509:   { left: [1090,1135], right: [645,690] },
-            1035:  { left: [1090,1135], right: [645,690] },
-            690:   { left: [993,1035], right: [780,820] },
-            935:   { left: [993,1035], right: [780,820] }
-        };
-        
-        // Все возможные базовые кадры (для определения текущего состояния)
-        const allBaseFrames = Object.keys(loopMap).map(Number).sort((a,b) => a-b);
-        
-        // Функция определения базового кадра по текущему времени видео
-        function getBaseFrameFromCurrentTime() {
-            const currentFrame = Math.round(video.currentTime * FPS);
-            // Ищем базовый кадр, в диапазон лупа которого попадает текущий кадр
-            for (let base of allBaseFrames) {
-                const range = loopMap[base];
-                if (range && currentFrame >= range[0] && currentFrame <= range[1]) {
-                    return base;
-                }
-            }
-            // Если не нашли, вернём ближайший меньший базовый кадр
-            for (let i = allBaseFrames.length-1; i >= 0; i--) {
-                if (allBaseFrames[i] <= currentFrame) return allBaseFrames[i];
-            }
-            return START_FRAME;
-        }
-        
         function frameToTime(frame) { return frame / FPS; }
+        
         function disableAllButtons(disabled) {
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
-        // Остановка текущего лупа
-        function stopLoop() {
-            if (currentLoopHandler) {
-                clearInterval(currentLoopHandler);
-                currentLoopHandler = null;
-            }
-            // Также снимаем обработчик timeupdate, если он был
-            if (video._loopTimeUpdateHandler) {
-                video.removeEventListener('timeupdate', video._loopTimeUpdateHandler);
-                video._loopTimeUpdateHandler = null;
-            }
-        }
-        
-        // Запуск лупа для заданного базового кадра
-        function startLoop(baseFrame) {
-            stopLoop();
-            const range = loopMap[baseFrame];
-            if (!range || range[0] >= range[1]) return;
-            
-            const startTime = frameToTime(range[0]);
-            const endTime = frameToTime(range[1]);
-            
-            const playCycle = () => {
-                video.currentTime = startTime;
-                video.play().catch(e => console.warn("Loop play error", e));
-                
-                const onUpdate = () => {
-                    if (video.currentTime >= endTime) {
-                        video.removeEventListener('timeupdate', onUpdate);
-                        if (currentLoopHandler) playCycle();
-                    }
-                };
-                video.addEventListener('timeupdate', onUpdate);
-                video._loopTimeUpdateHandler = onUpdate;
-                currentLoopHandler = setTimeout(() => {}, 1); // просто маркер, что луп активен
-            };
-            playCycle();
-        }
-        
-        // Воспроизведение отрезка (перелёт)
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
-            stopLoop();
             isPlaying = true;
             disableAllButtons(true);
             
@@ -357,17 +263,7 @@
             video.currentTime = frameToTime(finalFrame);
             video.pause();
             if (finalCallback) finalCallback(finalFrame);
-            
-            // Определяем новый базовый кадр (по конечному кадру или по текущей позиции)
-            let newBase = finalFrame;
-            if (loopMap[finalFrame]) {
-                newBase = finalFrame;
-            } else {
-                newBase = getBaseFrameFromCurrentTime();
-            }
-            currentBaseFrame = newBase;
-            updateUIByFrame(newBase);
-            startLoop(newBase);
+            updateUIByFrame(finalFrame);
         }
         
         function playSegment(start, end, onComplete) {
@@ -380,8 +276,22 @@
             centerDiv.innerHTML = '';
         }
         
-        function renderNavButtons(baseFrame) {
-            const rule = navRules[baseFrame];
+        function renderNavButtons(currentFrame) {
+            const navRules = {
+                270:  { left: [896,935], right: [295,344] },
+                820:  { left: [896,935], right: [295,344] },
+                1225: { left: [896,935], right: [295,344] },
+                1540: { left: [896,935], right: [295,344] },
+                1875: { left: [896,935], right: [295,344] },
+                2128: { left: [896,935], right: [295,344] },
+                344:  { left: [1183,1225], right: [465,509] },
+                1135: { left: [1183,1225], right: [465,509] },
+                509:  { left: [1090,1135], right: [645,690] },
+                1035: { left: [1090,1135], right: [645,690] },
+                690:  { left: [993,1035], right: [780,820] },
+                935:  { left: [993,1035], right: [780,820] }
+            };
+            const rule = navRules[currentFrame];
             if (rule) {
                 if (rule.left) {
                     const btn = document.createElement('button');
@@ -398,16 +308,16 @@
             }
         }
         
-        function addHomeButton(baseFrame) {
-            const genplanQueueFrames = [1, 820, 1225, 1540, 1875, 2128];
-            if (genplanQueueFrames.includes(baseFrame)) return;
+        function addHomeButton(currentFrame) {
+            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
+            if (genplanQueueFrames.includes(currentFrame)) return;
             
             let segmentsToPlay = null;
-            if (baseFrame === 344 || baseFrame === 1135) {
+            if (currentFrame === 344 || currentFrame === 1135) {
                 segmentsToPlay = [{start: 1183, end: 1225}];
-            } else if (baseFrame === 509 || baseFrame === 1035) {
+            } else if (currentFrame === 509 || currentFrame === 1035) {
                 segmentsToPlay = [{start: 645, end: 690}, {start: 780, end: 820}];
-            } else if (baseFrame === 690 || baseFrame === 935) {
+            } else if (currentFrame === 690 || currentFrame === 935) {
                 segmentsToPlay = [{start: 780, end: 820}];
             }
             
@@ -420,9 +330,7 @@
                         playSegments(segmentsToPlay, () => {
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
-                            currentBaseFrame = START_FRAME;
                             updateUIByFrame(START_FRAME);
-                            startLoop(START_FRAME);
                         });
                     }
                 };
@@ -431,9 +339,7 @@
                     if (!isPlaying) {
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
-                        currentBaseFrame = START_FRAME;
                         updateUIByFrame(START_FRAME);
-                        startLoop(START_FRAME);
                     }
                 };
             }
@@ -452,7 +358,7 @@
                     else { start = 1983; end = 2013; }
                     playSegment(start, end, () => {
                         selectedQueue = id;
-                        // После перелёта состояние станет "yard", обновится в updateUIByFrame
+                        currentState = "yard";
                     });
                 };
                 centerDiv.appendChild(btn);
@@ -508,6 +414,7 @@
                 else if (selectedQueue === 2) { start = 1845; end = 1875; }
                 else { start = 2091; end = 2128; }
                 playSegment(start, end, () => {
+                    currentState = "genplan";
                     selectedQueue = null;
                 });
             };
@@ -517,46 +424,43 @@
             if (rightBtn) centerDiv.appendChild(rightBtn);
         }
         
-        function updateUIByFrame(baseFrame) {
+        function updateUIByFrame(currentFrame) {
             clearInterface();
-            console.log("updateUIByFrame, базовый кадр:", baseFrame);
+            console.log("updateUIByFrame, кадр:", currentFrame);
             
-            const genplanQueueFrames = [1, 820, 1225, 1540, 1875, 2128];
+            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
             const yardMap = {
                 1405:1, 2676:1, 3060:1,
                 1718:2, 2360:2, 2942:2,
                 2013:3, 2484:3, 2820:3
             };
             
-            let isYard = false;
-            let queueId = null;
-            if (yardMap.hasOwnProperty(baseFrame)) {
-                isYard = true;
-                queueId = yardMap[baseFrame];
-                selectedQueue = queueId;
+            if (yardMap.hasOwnProperty(currentFrame)) {
+                currentState = "yard";
+                selectedQueue = yardMap[currentFrame];
             } else {
-                isYard = false;
+                currentState = "genplan";
                 selectedQueue = null;
             }
             
-            renderNavButtons(baseFrame);
+            renderNavButtons(currentFrame);
             
-            if (isYard) {
-                renderYardButtons(selectedQueue);
-            } else {
-                if (genplanQueueFrames.includes(baseFrame)) {
+            if (currentState === "genplan") {
+                if (genplanQueueFrames.includes(currentFrame)) {
                     renderGenplanQueueButtons();
                 }
-                if (!genplanQueueFrames.includes(baseFrame) && baseFrame !== START_FRAME) {
-                    addHomeButton(baseFrame);
+                if (!genplanQueueFrames.includes(currentFrame) && currentFrame !== START_FRAME) {
+                    addHomeButton(currentFrame);
                 }
+            } else if (currentState === "yard") {
+                renderYardButtons(selectedQueue);
             }
         }
         
-        // ========== ИНИЦИАЛИЗАЦИЯ ==========
+        // ========== ОЖИДАНИЕ ПОЛНОЙ ГОТОВНОСТИ ВИДЕО ==========
         function waitForVideoReady() {
             return new Promise((resolve) => {
-                if (video.readyState >= 3) {
+                if (video.readyState >= 3) { // HAVE_FUTURE_DATA или HAVE_ENOUGH_DATA
                     resolve();
                     return;
                 }
@@ -565,6 +469,7 @@
                     resolve();
                 };
                 video.addEventListener('canplaythrough', onCanPlayThrough);
+                // Запасной таймер на случай, если canplaythrough не сработает
                 setTimeout(() => {
                     video.removeEventListener('canplaythrough', onCanPlayThrough);
                     resolve();
@@ -584,27 +489,27 @@
                     }
                     if (percent >= 100) {
                         clearInterval(interval);
+                        // Дожидаемся реальной готовности видео
                         waitForVideoReady().then(() => {
                             preloader.style.display = 'none';
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
-                            currentBaseFrame = START_FRAME;
-                            updateUIByFrame(START_FRAME);
-                            startLoop(START_FRAME);
+                            setTimeout(() => {
+                                updateUIByFrame(START_FRAME);
+                            }, 50);
                         });
                     }
                 } else {
                     loadPercent.textContent = '0%';
                 }
             }, 200);
+            // Защита от бесконечной загрузки
             setTimeout(() => {
                 if (preloader.style.display !== 'none') {
                     preloader.style.display = 'none';
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
-                    currentBaseFrame = START_FRAME;
                     updateUIByFrame(START_FRAME);
-                    startLoop(START_FRAME);
                 }
             }, 15000);
         }
