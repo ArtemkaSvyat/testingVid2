@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D облёт здания</title>
+    <title>3D облёт здания — одно видео, всё на паузе</title>
     <style>
         * {
             box-sizing: border-box;
@@ -33,24 +33,13 @@
             aspect-ratio: 16 / 9;
             background: #000;
         }
-        .media-container img,
-        .media-container video {
+        video {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transition: opacity 0.2s ease;
-        }
-        /* Изначально видео невидимо, но присутствует в DOM */
-        .media-container video {
-            z-index: 2;
-            opacity: 0;
-        }
-        .media-container img {
-            z-index: 1;
-            opacity: 1;
         }
         .controls {
             display: flex;
@@ -101,7 +90,6 @@
             align-items: center;
             z-index: 10000;
             color: white;
-            font-family: system-ui, sans-serif;
             gap: 16px;
         }
         .spinner {
@@ -120,10 +108,6 @@
             font-size: 24px;
             font-weight: bold;
         }
-        #load-text {
-            font-size: 14px;
-            opacity: 0.8;
-        }
     </style>
 </head>
 <body>
@@ -131,218 +115,174 @@
 <div id="preloader">
     <div class="spinner"></div>
     <div id="load-percent">0%</div>
-    <div id="load-text">Загрузка ресурсов...</div>
+    <div>Загрузка видео...</div>
 </div>
 
 <div class="viewer">
     <div class="media-container">
-        <!-- Статичное изображение по умолчанию -->
-        <img id="staticImage" src="renders/front_view.png" alt="Здание, вид спереди">
-        <!-- Видео для анимаций -->
-        <video id="transitionVideo" src="" preload="auto" playsinline webkit-playsinline muted></video>
+        <!-- Единственное видео, которое будет и показывать виды, и проигрывать перелёты -->
+        <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
     </div>
-    <div class="controls">
-        <!-- ВНИМАНИЕ: замени пути на свои реальные файлы! -->
-        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Облёт → направо</button>
-        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Облёт → налево</button>
-        <button data-video="videos/fly_left_to_right.mp4" data-final-image="renders/right_view.png">Приблизить фасад</button>
+    <div id="controlsContainer" class="controls">
+        <!-- Кнопки будут добавлены скриптом -->
     </div>
 </div>
 
 <script>
     (function() {
-        // ======================= НАСТРОЙКА РЕСУРСОВ ДЛЯ ПРЕДЗАГРУЗКИ =======================
-        // ⚠️ Укажи здесь ВСЕ файлы, которые используются на сайте:
-        // - все статичные картинки (включая те, что в data-final-image у кнопок)
-        // - все видео (из data-video у кнопок)
-        const assetsToPreload = [
-            // Статичные картинки (рендеры)
-            "renders/front_view.png",
-            "renders/right_view.png",
-            // Видеофайлы
-            "videos/fly_left_to_right.mp4"
+        // ======================= НАСТРОЙКИ (ИЗМЕНИ ПОД СЕБЯ) =======================
+        const FPS = 30;                           // Частота кадров видео
+        const videoPath = "videos/all_flights.mp4"; // Путь к одному длинному видео
+        
+        // Начальный кадр, на котором будет стоять видео после загрузки (первый вид)
+        const startFrame = 0;   // или 1, смотря как рендерили
+        
+        // Описание перелётов (каждый перелёт имеет фиксированные начальный и конечный кадры)
+        // После проигрывания видео остановится на конечном кадре, и это станет текущим видом.
+        const segments = [
+            { startFrame: 0,    endFrame: 87,  buttonText: "Облёт → направо" },
+            { startFrame: 87,   endFrame: 150, buttonText: "Облёт → налево" },
+            { startFrame: 150,  endFrame: 210, buttonText: "Приблизить фасад" },
+            // Добавь свои перелёты по аналогии
+            // { startFrame: 210, endFrame: 300, buttonText: "Вид сзади" },
         ];
         // ====================================================================
 
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
-        const staticImg = document.getElementById('staticImage');
-        const videoElem = document.getElementById('transitionVideo');
+        const video = document.getElementById('mainVideo');
+        const controlsContainer = document.getElementById('controlsContainer');
         
-        let loaded = 0;
-        const total = assetsToPreload.length;
-
-        function updateProgress() {
-            const percent = Math.floor((loaded / total) * 100);
-            loadPercent.textContent = percent + '%';
-            if (loaded === total) {
-                // Все ресурсы загружены — убираем прелоадер
-                preloader.style.display = 'none';
-                // Разблокируем кнопки
-                document.querySelectorAll('button').forEach(btn => {
-                    btn.disabled = false;
+        let currentTimeUpdateHandler = null; // для отслеживания окончания отрезка
+        
+        // Преобразование кадра в секунды
+        function frameToTime(frame) {
+            return frame / FPS;
+        }
+        
+        // Остановить текущее воспроизведение и убрать обработчик
+        function stopCurrentPlayback() {
+            if (currentTimeUpdateHandler) {
+                video.removeEventListener('timeupdate', currentTimeUpdateHandler);
+                currentTimeUpdateHandler = null;
+            }
+            video.pause();
+        }
+        
+        // Воспроизвести отрезок от startFrame до endFrame
+        function playSegment(startFrame, endFrame) {
+            // Останавливаем всё, что играло
+            stopCurrentPlayback();
+            
+            const startTime = frameToTime(startFrame);
+            const endTime = frameToTime(endFrame);
+            
+            // Проверка на выход за пределы длительности (можно добавить warning)
+            if (endTime > video.duration) {
+                console.warn(`Конечный кадр ${endFrame} (${endTime}с) превышает длительность видео ${video.duration}с`);
+            }
+            
+            // Устанавливаем позицию на начало
+            video.currentTime = startTime;
+            
+            // Создаём обработчик для остановки на endTime
+            const onTimeUpdate = () => {
+                if (video.currentTime >= endTime) {
+                    video.pause();
+                    video.removeEventListener('timeupdate', onTimeUpdate);
+                    currentTimeUpdateHandler = null;
+                }
+            };
+            
+            video.addEventListener('timeupdate', onTimeUpdate);
+            currentTimeUpdateHandler = onTimeUpdate;
+            
+            // Запускаем воспроизведение
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn('Автовоспроизведение заблокировано:', err);
+                    // Если не удалось запустить, убираем обработчик и оставляем видео на месте
+                    video.removeEventListener('timeupdate', onTimeUpdate);
+                    currentTimeUpdateHandler = null;
                 });
             }
         }
-
-        // Предзагрузка изображения
-        function preloadImage(src) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                    loaded++;
-                    updateProgress();
-                    resolve();
-                };
-                img.onerror = () => {
-                    console.warn(`Не удалось загрузить изображение: ${src}`);
-                    loaded++;
-                    updateProgress();
-                    resolve();
-                };
-                img.src = src;
+        
+        // Создание кнопок на основе массива segments
+        function renderButtons() {
+            controlsContainer.innerHTML = '';
+            segments.forEach(seg => {
+                const btn = document.createElement('button');
+                btn.textContent = seg.buttonText;
+                btn.addEventListener('click', () => {
+                    playSegment(seg.startFrame, seg.endFrame);
+                });
+                controlsContainer.appendChild(btn);
             });
         }
-
-        // Предзагрузка видео (через создание скрытого video элемента)
-        function preloadVideo(src) {
+        
+        // Предзагрузка видео: дожидаемся, пока можно будет перематывать
+        function waitForVideoReady() {
             return new Promise((resolve) => {
-                const video = document.createElement('video');
-                video.preload = 'auto';
-                video.muted = true;
-                video.playsInline = true;
-                // Событие "canplaythrough" означает, что браузер загрузил достаточно данных для плавного воспроизведения
-                video.oncanplaythrough = () => {
-                    loaded++;
-                    updateProgress();
+                if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                    resolve();
+                    return;
+                }
+                const onLoadedData = () => {
+                    video.removeEventListener('loadeddata', onLoadedData);
                     resolve();
                 };
-                video.onerror = () => {
-                    console.warn(`Не удалось загрузить видео: ${src}`);
-                    loaded++;
-                    updateProgress();
-                    resolve();
-                };
-                video.src = src;
+                video.addEventListener('loadeddata', onLoadedData);
                 video.load();
             });
         }
-
-        // Запуск предзагрузки всех ресурсов
-        async function startPreload() {
-            // Блокируем кнопки с самого начала
-            document.querySelectorAll('button').forEach(btn => {
-                btn.disabled = true;
-            });
-            
-            const promises = assetsToPreload.map(asset => {
-                if (asset.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                    return preloadImage(asset);
-                } else if (asset.match(/\.(mp4|webm|mov)$/i)) {
-                    return preloadVideo(asset);
-                } else {
-                    // Неизвестный тип — просто считаем загруженным
-                    loaded++;
-                    updateProgress();
-                    return Promise.resolve();
-                }
-            });
-            await Promise.all(promises);
-        }
-
-        // Функция воспроизведения перелёта (без display:none, только opacity + z-index)
-        // Функция для запуска перелёта (улучшенная)
-function playTransition(videoSrc, finalImageSrc) {
-    // Останавливаем предыдущее воспроизведение, если оно было
-    videoElem.pause();
-    
-    // Ставим видео на начальную позицию (на случай, если оно было доиграно)
-    videoElem.currentTime = 0;
-    
-    // Делаем видео видимым, но картинка пока остаётся сверху
-    videoElem.style.opacity = '1';
-    videoElem.style.zIndex = '2';
-    staticImg.style.zIndex = '1';
-    staticImg.style.opacity = '1'; // картинка пока видна
-    
-    // Устанавливаем источник и загружаем
-    videoElem.src = videoSrc;
-    videoElem.load();
-    
-    // Убеждаемся, что настройки для iOS соблюдены
-    videoElem.muted = true;
-    videoElem.playsInline = true;
-    videoElem.webkitPlaysInline = true;
-    
-    // Функция, которая сработает, когда видео отрисовало первый кадр
-    const onFirstFrame = () => {
-        // Теперь можно безопасно скрыть картинку
-        staticImg.style.opacity = '0';
-        // Убираем обработчики, чтобы не сработали повторно
-        videoElem.removeEventListener('playing', onFirstFrame);
-        videoElem.removeEventListener('timeupdate', onFirstFrame);
-    };
-    
-    // Событие 'playing' срабатывает, когда видео начинает воспроизведение (первый кадр уже есть)
-    videoElem.addEventListener('playing', onFirstFrame);
-    // Подстраховка: если 'playing' не сработает, используем 'timeupdate' (первый тик)
-    videoElem.addEventListener('timeupdate', onFirstFrame, { once: true });
-    
-    // Обработчик для ранней подмены картинки в конце
-    let endedHandlerApplied = false;
-    const onTimeUpdate = () => {
-        const timeLeft = videoElem.duration - videoElem.currentTime;
-        // Если до конца осталось менее 0.1 секунды и ещё не подменяли картинку
-        if (timeLeft < 0.1 && !endedHandlerApplied) {
-            endedHandlerApplied = true;
-            // Меняем картинку на финальный рендер
-            staticImg.src = finalImageSrc;
-            // Оставляем картинку невидимой, но уже с новым src
-            // Когда видео закончится, сделаем её видимой
-        }
-    };
-    
-    // Обработчик окончания видео
-    const onEnded = () => {
-        // Делаем картинку видимой (она уже содержит финальный кадр)
-        staticImg.style.opacity = '1';
-        // Прячем видео
-        videoElem.style.opacity = '0';
-        videoElem.style.zIndex = '1';
-        // Чистим обработчики
-        videoElem.removeEventListener('timeupdate', onTimeUpdate);
-        videoElem.removeEventListener('ended', onEnded);
-    };
-    
-    videoElem.addEventListener('timeupdate', onTimeUpdate);
-    videoElem.addEventListener('ended', onEnded);
-    
-    // Запускаем воспроизведение
-    const playPromise = videoElem.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.warn('Автовоспроизведение заблокировано:', error);
-            // Если блокировка — откатываем изменения
-            staticImg.style.opacity = '1';
-            videoElem.style.opacity = '0';
-        });
-    }
-}
-        // Навешиваем обработчики на кнопки после загрузки DOM
-        document.addEventListener('DOMContentLoaded', () => {
-            // Запускаем предзагрузку
-            startPreload();
-            
-            // Обработчики кликов по кнопкам
-            document.querySelectorAll('button').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const videoPath = btn.getAttribute('data-video');
-                    const finalImagePath = btn.getAttribute('data-final-image');
-                    if (videoPath && finalImagePath) {
-                        playTransition(videoPath, finalImagePath);
+        
+        // Отображение прогресса загрузки через buffered
+        function startPreloaderAndPlay() {
+            let lastPercent = 0;
+            const interval = setInterval(() => {
+                if (video.buffered.length > 0) {
+                    const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                    const percent = Math.min(100, Math.round((bufferedEnd / video.duration) * 100));
+                    if (percent !== lastPercent) {
+                        lastPercent = percent;
+                        loadPercent.textContent = percent + '%';
                     }
-                });
-            });
+                    if (percent >= 100) {
+                        clearInterval(interval);
+                        // Скрываем прелоадер
+                        preloader.style.display = 'none';
+                        // Устанавливаем видео на начальный кадр и ставим на паузу
+                        video.currentTime = frameToTime(startFrame);
+                        video.pause();
+                        // Создаём кнопки управления
+                        renderButtons();
+                    }
+                } else {
+                    loadPercent.textContent = '0%';
+                }
+            }, 200);
+            
+            // Защита от бесконечного прелоадера (если видео не грузится, скрыть через 15 секунд)
+            setTimeout(() => {
+                if (preloader.style.display !== 'none') {
+                    console.warn('Таймаут загрузки, принудительный старт');
+                    preloader.style.display = 'none';
+                    video.currentTime = frameToTime(startFrame);
+                    video.pause();
+                    renderButtons();
+                }
+            }, 15000);
+        }
+        
+        // Инициализация
+        video.src = videoPath;
+        video.load();
+        waitForVideoReady().then(() => {
+            startPreloaderAndPlay();
+        }).catch(() => {
+            startPreloaderAndPlay();
         });
     })();
 </script>
