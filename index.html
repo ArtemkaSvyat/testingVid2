@@ -18,7 +18,7 @@
             font-family: system-ui, 'Segoe UI', sans-serif;
             margin: 0;
             padding: 20px;
-            overflow: hidden; /* полностью запрещаем скролл страницы */
+            overflow: hidden; /* запрещаем скролл страницы */
         }
         .viewer {
             position: relative;
@@ -33,6 +33,7 @@
             position: relative;
             aspect-ratio: 16 / 9;
             background: #000;
+            touch-action: none; /* отключаем скролл на контейнере */
         }
         video {
             position: absolute;
@@ -41,7 +42,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            touch-action: none; /* отключает скролл при касаниях на видео */
+            pointer-events: none; /* видео не перехватывает события, всё обрабатывает контейнер */
         }
         .controls {
             display: flex;
@@ -145,7 +146,7 @@
 </div>
 
 <div class="viewer">
-    <div class="media-container">
+    <div class="media-container" id="mediaContainer">
         <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
     </div>
     <div class="controls" id="controlsPanel">
@@ -165,6 +166,7 @@
         let selectedQueue = null;
         let isPlaying = false;
         
+        const mediaContainer = document.getElementById('mediaContainer');
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
         const navRightDiv = document.getElementById('navRight');
@@ -399,7 +401,7 @@
             }
         }
         
-        // ========== УПРАВЛЕНИЕ СВАЙПАМИ (ИНВЕРТИРОВАННЫМИ) ==========
+        // ========== УПРАВЛЕНИЕ СВАЙПАМИ (ИНВЕРТИРОВАННЫМИ) НА КОНТЕЙНЕРЕ ==========
         let touchStartX = 0;
         let dragStartX = 0;
         let isDragging = false;
@@ -430,7 +432,7 @@
         
         function onPointerMove(e) {
             if (!isDragging || isPlaying) return;
-            e.preventDefault(); // запрещаем скролл
+            e.preventDefault();
             let currentX, currentY;
             if (e.touches) {
                 currentX = e.touches[0].clientX;
@@ -440,18 +442,16 @@
                 currentY = e.clientY;
             }
             const deltaX = currentX - dragStartX;
-            const deltaY = currentY - touchStartX; // используем начальный Y (можно сохранить отдельно)
+            const deltaY = currentY - touchStartX; // приблизительная вертикаль
             if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < 100) {
-                // ИНВЕРТИРОВАНИЕ: свайп вправо -> вызываем "Влево", свайп влево -> вызываем "Вправо"
+                // ИНВЕРТИРОВАНИЕ: свайп вправо -> вызов left, свайп влево -> вызов right
                 if (deltaX > 0) {
-                    // движение вправо -> переход влево
                     const transition = getTransitionForDirection('left');
                     if (transition && !isPlaying) {
                         isDragging = false;
                         playSegment(transition.start, transition.end);
                     }
                 } else {
-                    // движение влево -> переход вправо
                     const transition = getTransitionForDirection('right');
                     if (transition && !isPlaying) {
                         isDragging = false;
@@ -467,14 +467,15 @@
             e.preventDefault();
         }
         
-        // Отключаем скролл колесика на видео
-        video.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
-        video.addEventListener('touchstart', onPointerStart, { passive: false });
-        video.addEventListener('touchmove', onPointerMove, { passive: false });
-        video.addEventListener('touchend', onPointerEnd);
-        video.addEventListener('mousedown', onPointerStart);
+        // Навешиваем обработчики на контейнер .media-container
+        mediaContainer.addEventListener('touchstart', onPointerStart, { passive: false });
+        mediaContainer.addEventListener('touchmove', onPointerMove, { passive: false });
+        mediaContainer.addEventListener('touchend', onPointerEnd);
+        mediaContainer.addEventListener('mousedown', onPointerStart);
         window.addEventListener('mousemove', onPointerMove);
         window.addEventListener('mouseup', onPointerEnd);
+        // Отключаем скролл колесика на контейнере
+        mediaContainer.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
         
         // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
