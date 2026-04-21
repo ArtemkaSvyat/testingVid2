@@ -41,23 +41,21 @@
             height: 100%;
             object-fit: cover;
         }
-        /* Индикатор текущего кадра */
+        /* Индикатор кадра */
         .frame-indicator {
             position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(4px);
-            padding: 8px 16px;
-            border-radius: 40px;
+            background: rgba(0,0,0,0.6);
+            color: #0f0;
             font-family: monospace;
             font-size: 16px;
-            font-weight: bold;
-            color: #0f0;
+            padding: 6px 12px;
+            border-radius: 8px;
             z-index: 100;
             pointer-events: none;
-            letter-spacing: 1px;
-            border: 1px solid rgba(255,255,255,0.3);
+            backdrop-filter: blur(4px);
+            font-weight: bold;
         }
         .controls {
             display: flex;
@@ -150,10 +148,9 @@
                 justify-content: center;
             }
             .frame-indicator {
+                font-size: 12px;
                 top: 10px;
                 right: 10px;
-                font-size: 12px;
-                padding: 4px 12px;
             }
         }
     </style>
@@ -169,7 +166,7 @@
 <div class="viewer">
     <div class="media-container">
         <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
-        <div class="frame-indicator" id="frameIndicator">Кадр: 0</div>
+        <div class="frame-indicator" id="frameIndicator">Кадр: --</div>
     </div>
     <div class="controls" id="controlsPanel">
         <div class="nav-left" id="navLeft"></div>
@@ -181,13 +178,15 @@
 <script>
     (function() {
         // ======================= КОНФИГУРАЦИЯ =======================
-        const FPS = 30;                           // частота кадров видео
-        const videoPath = "videos/all_flights.mp4"; // путь к видео
-        const START_FRAME = 295;                  // стартовый кадр (генплан)
+        const FPS = 30;
+        const videoPath = "videos/all_flights.mp4";
+        const START_FRAME = 295;
         
         let currentState = "genplan";   // "genplan" или "yard"
-        let selectedQueue = null;       // 1,2,3
+        let selectedQueue = null;
         let isPlaying = false;
+        let currentPlaybackInterval = null;   // для хранения обработчика timeupdate
+        let currentEndFrame = null;            // конечный кадр текущего воспроизведения
         
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
@@ -195,19 +194,19 @@
         const centerDiv = document.getElementById('centerButtons');
         const frameIndicator = document.getElementById('frameIndicator');
         
-        // Обновление индикатора кадра
+        // ========== ИНДИКАТОР КАДРА ==========
         function updateFrameIndicator() {
-            if (video && !isNaN(video.duration)) {
+            if (video.duration) {
                 const currentFrame = Math.round(video.currentTime * FPS);
-                frameIndicator.textContent = `Кадр: ${currentFrame} | ${isPlaying ? '▶' : '⏸'}`;
+                const state = isPlaying ? "▶" : "⏸";
+                frameIndicator.textContent = `Кадр: ${currentFrame} ${state}`;
             } else {
-                frameIndicator.textContent = `Кадр: 0 | ⏸`;
+                frameIndicator.textContent = `Кадр: --`;
             }
         }
         
-        // Запускаем обновление индикатора по timeupdate
-        video.addEventListener('timeupdate', updateFrameIndicator);
-        // Также обновляем по requestAnimationFrame для плавности (но timeupdate достаточно)
+        // Обновление индикатора в реальном времени
+        setInterval(updateFrameIndicator, 100);
         
         // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
         function frameToTime(frame) { return frame / FPS; }
@@ -216,24 +215,24 @@
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
-        // Остановка любого воспроизведения и сброс обработчиков
-        function stopAllPlayback() {
-            if (isPlaying) {
-                video.pause();
-                // Удаляем все обработчики timeupdate, которые могли быть добавлены playSegments
-                // Но мы их храним в локальных переменных, поэтому просто прерываем флаг
-                isPlaying = false;
-                disableAllButtons(false);
+        // Полная остановка текущего воспроизведения и очистка обработчиков
+        function stopCurrentPlayback() {
+            if (currentPlaybackInterval) {
+                video.removeEventListener('timeupdate', currentPlaybackInterval);
+                currentPlaybackInterval = null;
             }
+            video.pause();
+            isPlaying = false;
+            currentEndFrame = null;
+            disableAllButtons(false);
         }
         
         // Воспроизведение последовательности отрезков
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) {
-                console.warn("Already playing, ignoring");
-                return;
+                // Останавливаем предыдущее воспроизведение
+                stopCurrentPlayback();
             }
-            stopAllPlayback(); // дополнительная страховка
             isPlaying = true;
             disableAllButtons(true);
             
@@ -242,18 +241,23 @@
                     const startTime = frameToTime(seg.start);
                     const endTime = frameToTime(seg.end);
                     video.currentTime = startTime;
-                    // Обновим индикатор сразу
-                    updateFrameIndicator();
-                    const onUpdate = () => {
-                        if (video.currentTime >= endTime) {
-                            video.removeEventListener('timeupdate', onUpdate);
+                    currentEndFrame = seg.end;
+                    
+                    const onTimeUpdate = () => {
+                        const currentFrame = Math.round(video.currentTime * FPS);
+                        if (currentFrame >= currentEndFrame) {
+                            video.pause();
+                            video.removeEventListener('timeupdate', onTimeUpdate);
+                            currentPlaybackInterval = null;
                             resolve();
                         }
                     };
-                    video.addEventListener('timeupdate', onUpdate);
+                    video.addEventListener('timeupdate', onTimeUpdate);
+                    currentPlaybackInterval = onTimeUpdate;
                     video.play().catch(err => {
-                        console.warn("Play error:", err);
-                        video.removeEventListener('timeupdate', onUpdate);
+                        console.warn(err);
+                        video.removeEventListener('timeupdate', onTimeUpdate);
+                        currentPlaybackInterval = null;
                         resolve();
                     });
                 });
@@ -263,7 +267,6 @@
             const finalFrame = segmentsList[segmentsList.length-1].end;
             if (finalCallback) finalCallback(finalFrame);
             updateUIByFrame(finalFrame);
-            updateFrameIndicator();
         }
         
         function playSegment(start, end, onComplete) {
@@ -277,7 +280,6 @@
             centerDiv.innerHTML = '';
         }
         
-        // Кнопки навигации (влево/вправо) в зависимости от текущего кадра
         function renderNavButtons(currentFrame) {
             const navRules = {
                 295:  { left: [896,935], right: [295,344] },
@@ -298,22 +300,25 @@
                 if (rule.left) {
                     const btn = document.createElement('button');
                     btn.textContent = "← Влево";
-                    btn.onclick = () => { if (!isPlaying) playSegment(rule.left[0], rule.left[1]); };
+                    btn.onclick = () => {
+                        if (!isPlaying) playSegment(rule.left[0], rule.left[1]);
+                    };
                     navLeftDiv.appendChild(btn);
                 }
                 if (rule.right) {
                     const btn = document.createElement('button');
                     btn.textContent = "Вправо →";
-                    btn.onclick = () => { if (!isPlaying) playSegment(rule.right[0], rule.right[1]); };
+                    btn.onclick = () => {
+                        if (!isPlaying) playSegment(rule.right[0], rule.right[1]);
+                    };
                     navRightDiv.appendChild(btn);
                 }
             }
         }
         
-        // Кнопка "На главную" (возврат на 295) с учётом особых последовательностей
         function addHomeButton(currentFrame) {
             const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
-            if (genplanQueueFrames.includes(currentFrame)) return; // не показываем на этих кадрах
+            if (genplanQueueFrames.includes(currentFrame)) return;
             
             let segmentsToPlay = null;
             if (currentFrame === 344 || currentFrame === 1135) {
@@ -334,7 +339,6 @@
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
                             updateUIByFrame(START_FRAME);
-                            updateFrameIndicator();
                         });
                     }
                 };
@@ -344,14 +348,12 @@
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
                         updateUIByFrame(START_FRAME);
-                        updateFrameIndicator();
                     }
                 };
             }
             centerDiv.appendChild(btn);
         }
         
-        // Кнопки очередей (режим генплана)
         function renderGenplanQueueButtons() {
             [1,2,3].forEach(id => {
                 const btn = document.createElement('button');
@@ -371,7 +373,6 @@
             });
         }
         
-        // Кнопки режима двора (переход между очередями + "Генплан")
         function renderYardButtons(currentQueue) {
             const others = [];
             if (currentQueue !== 1) others.push(1);
@@ -394,7 +395,6 @@
                 };
                 centerDiv.appendChild(btn);
             });
-            // кнопка "Генплан"
             const backBtn = document.createElement('button');
             backBtn.textContent = "Генплан";
             backBtn.style.background = "#4a6a8a";
@@ -412,7 +412,6 @@
             centerDiv.appendChild(backBtn);
         }
         
-        // ========== ОБНОВЛЕНИЕ ВСЕГО ИНТЕРФЕЙСА ПО КАДРУ ==========
         function updateUIByFrame(currentFrame) {
             clearInterface();
             console.log("updateUIByFrame, кадр:", currentFrame);
@@ -424,7 +423,6 @@
                 2013:3, 2484:3, 2820:3
             };
             
-            // Определяем состояние
             if (yardMap.hasOwnProperty(currentFrame)) {
                 currentState = "yard";
                 selectedQueue = yardMap[currentFrame];
@@ -447,7 +445,7 @@
             }
         }
         
-        // ========== ЗАГРУЗКА ВИДЕО И СТАРТ ==========
+        // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
@@ -468,7 +466,6 @@
                         video.pause();
                         setTimeout(() => {
                             updateUIByFrame(START_FRAME);
-                            updateFrameIndicator();
                         }, 50);
                     }
                 } else {
@@ -481,7 +478,6 @@
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
                     updateUIByFrame(START_FRAME);
-                    updateFrameIndicator();
                 }
             }, 15000);
         }
@@ -493,8 +489,6 @@
             preloader.style.display = 'none';
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
-        // Дополнительно обновляем индикатор по таймеру на случай, если video.timeupdate не срабатывает
-        setInterval(updateFrameIndicator, 100);
     })();
 </script>
 </body>
