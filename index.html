@@ -198,10 +198,10 @@
         const videoPath = "videos/all_flights.mp4";
         const START_FRAME = 270;
         
-        let currentState = "genplan";
+        let currentBaseFrame = START_FRAME;   // текущий базовый кадр (для интерфейса)
         let selectedQueue = null;
         let isPlaying = false;
-        let currentLoopHandler = null;   // для хранения таймаута/флага лупа
+        let currentLoopHandler = null;
         
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
@@ -210,111 +210,117 @@
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
-        // ========== НАСТРОЙКА ЛУПОВ (ЗАПОЛНИТЕ ПО СВОИМ НУЖДАМ) ==========
-        // Ключ: финальный кадр (точка остановки)
-        // Значение: массив [начало_лупа, конец_лупа] - видео будет бесконечно проигрывать этот отрезок
-        const loopMap = {
-            // Примеры (раскомментируйте и подставьте свои значения):
-            // 270: [270, 280],
-            // 344: [344, 354],
-            // 465: [465, 475],
-            // 509: [509, 519],
-            // 645: [645, 655],
-            // 690: [690, 700],
-            // 780: [780, 790],
-            // 820: [820, 830],
-            // 935: [935, 945],
-            // 993: [993, 1003],
-            // 1035: [1035, 1045],
-            // 1090: [1090, 1100],
-            // 1135: [1135, 1145],
-            // 1183: [1183, 1193],
-            // 1225: [1225, 1235],
-            // 1370: [1370, 1380],
-            // 1405: [1405, 1415],
-            // 1507: [1507, 1517],
-            // 1540: [1540, 1550],
-            // 1684: [1684, 1694],
-            // 1718: [1718, 1728],
-            // 1845: [1845, 1855],
-            // 1875: [1875, 1885],
-            // 1983: [1983, 1993],
-            // 2013: [2013, 2023],
-            // 2091: [2091, 2101],
-            // 2128: [2128, 2138],
-            // 2330: [2330, 2340],
-            // 2360: [2360, 2370],
-            // 2452: [2452, 2462],
-            // 2484: [2484, 2494],
-            // 2637: [2637, 2647],
-            // 2676: [2676, 2686],
-            // 2784: [2784, 2794],
-            // 2820: [2820, 2830],
-            // 2900: [2900, 2910],
-            // 2942: [2942, 2952],
-            // 3018: [3018, 3028],
-            // 3060: [3060, 3070],
+        // ========== БАЗОВЫЕ КАДРЫ И НАВИГАЦИЯ ==========
+        const navRules = {
+            270:  { left: [896,935], right: [295,344] },
+            820:  { left: [896,935], right: [295,344] },
+            1225: { left: [896,935], right: [295,344] },
+            1540: { left: [896,935], right: [295,344] },
+            1875: { left: [896,935], right: [295,344] },
+            2128: { left: [896,935], right: [295,344] },
+            344:  { left: [1183,1225], right: [465,509] },
+            1135: { left: [1183,1225], right: [465,509] },
+            509:  { left: [1090,1135], right: [645,690] },
+            1035: { left: [1090,1135], right: [645,690] },
+            690:  { left: [993,1035], right: [780,820] },
+            935:  { left: [993,1035], right: [780,820] }
         };
-        // ================================================================
+        
+        // Собираем все ключевые кадры (базовые и те, что встречаются в переходах)
+        let allKeyFrames = new Set();
+        allKeyFrames.add(START_FRAME);
+        for (let key in navRules) {
+            let k = parseInt(key);
+            allKeyFrames.add(k);
+            let rule = navRules[key];
+            if (rule.left) {
+                allKeyFrames.add(rule.left[0]);
+                allKeyFrames.add(rule.left[1]);
+            }
+            if (rule.right) {
+                allKeyFrames.add(rule.right[0]);
+                allKeyFrames.add(rule.right[1]);
+            }
+        }
+        // Добавляем кадры из yardMap
+        const yardMap = {
+            1405:1, 2676:1, 3060:1,
+            1718:2, 2360:2, 2942:2,
+            2013:3, 2484:3, 2820:3
+        };
+        for (let key in yardMap) allKeyFrames.add(parseInt(key));
+        
+        let sortedKeyFrames = Array.from(allKeyFrames).sort((a,b) => a - b);
+        
+        // Функция определения базового кадра по текущему времени видео
+        function getBaseFrameFromCurrentTime() {
+            const currentFrame = Math.round(video.currentTime * FPS);
+            // Ищем базовый кадр: это ближайший ключевой кадр, который меньше или равен currentFrame,
+            // но также нужно учитывать, что мы можем находиться в лупе между базовым и следующим.
+            // Базовым считается тот, для которого currentFrame находится в диапазоне [base, nextBase-1] (или [base, +inf])
+            for (let i = 0; i < sortedKeyFrames.length; i++) {
+                let base = sortedKeyFrames[i];
+                let next = sortedKeyFrames[i+1];
+                if (next !== undefined) {
+                    if (currentFrame >= base && currentFrame < next) return base;
+                } else {
+                    if (currentFrame >= base) return base;
+                }
+            }
+            return START_FRAME;
+        }
+        
+        // Функция получения диапазона лупа для базового кадра
+        function getLoopRange(baseFrame) {
+            let index = sortedKeyFrames.indexOf(baseFrame);
+            if (index === -1) return null;
+            let nextFrame = sortedKeyFrames[index+1];
+            if (!nextFrame) return null; // нет следующего — лупа нет
+            return { start: baseFrame + 1, end: nextFrame - 1 };
+        }
         
         function frameToTime(frame) { return frame / FPS; }
-        
         function disableAllButtons(disabled) {
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
-        // Функция остановки текущего лупа
+        // Остановка лупа
         function stopLoop() {
             if (currentLoopHandler) {
                 clearInterval(currentLoopHandler);
                 currentLoopHandler = null;
             }
-            // Убираем обработчик timeupdate, если он был от лупа (можно просто снять все, но осторожно)
-            // Мы будем использовать интервальный подход, чтобы не конфликтовать с playSegments.
         }
         
-        // Запуск лупа для заданного конечного кадра
-        function startLoop(finalFrame) {
+        // Запуск лупа для базового кадра
+        function startLoop(baseFrame) {
             stopLoop();
-            const loopRange = loopMap[finalFrame];
-            if (!loopRange) {
-                // Нет лупа — просто пауза (видео уже на паузе после playSegments)
-                return;
-            }
-            const [loopStart, loopEnd] = loopRange;
-            if (loopStart >= loopEnd) return;
+            const range = getLoopRange(baseFrame);
+            if (!range || range.start > range.end) return;
             
-            const startTime = frameToTime(loopStart);
-            const endTime = frameToTime(loopEnd);
+            const startTime = frameToTime(range.start);
+            const endTime = frameToTime(range.end);
             
-            // Функция для проигрывания одного цикла
             const playCycle = () => {
                 video.currentTime = startTime;
                 video.play().catch(e => console.warn("Loop play error", e));
                 
-                const onTimeUpdate = () => {
+                const onUpdate = () => {
                     if (video.currentTime >= endTime) {
-                        video.removeEventListener('timeupdate', onTimeUpdate);
-                        // Запускаем следующий цикл
-                        if (currentLoopHandler) {
-                            playCycle();
-                        }
+                        video.removeEventListener('timeupdate', onUpdate);
+                        if (currentLoopHandler) playCycle();
                     }
                 };
-                video.addEventListener('timeupdate', onTimeUpdate);
-                // Сохраняем обработчик, чтобы потом отписаться при остановке
-                currentLoopHandler = { type: 'timeupdate', handler: onTimeUpdate };
+                video.addEventListener('timeupdate', onUpdate);
+                currentLoopHandler = { type: 'timeupdate', handler: onUpdate };
             };
-            
             playCycle();
         }
         
-        // Переопределённая функция воспроизведения отрезков с поддержкой лупа
+        // Воспроизведение отрезка (перелёт)
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
-            // Останавливаем любой текущий луп перед началом нового перелёта
             stopLoop();
-            
             isPlaying = true;
             disableAllButtons(true);
             
@@ -361,10 +367,12 @@
             video.currentTime = frameToTime(finalFrame);
             video.pause();
             if (finalCallback) finalCallback(finalFrame);
-            updateUIByFrame(finalFrame);
             
-            // После завершения перелёта запускаем луп для конечного кадра (если есть)
-            startLoop(finalFrame);
+            // Определяем новый базовый кадр
+            const newBase = getBaseFrameFromCurrentTime();
+            currentBaseFrame = newBase;
+            updateUIByFrame(newBase);
+            startLoop(newBase);
         }
         
         function playSegment(start, end, onComplete) {
@@ -377,22 +385,8 @@
             centerDiv.innerHTML = '';
         }
         
-        function renderNavButtons(currentFrame) {
-            const navRules = {
-                270:  { left: [896,935], right: [295,344] },
-                820:  { left: [896,935], right: [295,344] },
-                1225: { left: [896,935], right: [295,344] },
-                1540: { left: [896,935], right: [295,344] },
-                1875: { left: [896,935], right: [295,344] },
-                2128: { left: [896,935], right: [295,344] },
-                344:  { left: [1183,1225], right: [465,509] },
-                1135: { left: [1183,1225], right: [465,509] },
-                509:  { left: [1090,1135], right: [645,690] },
-                1035: { left: [1090,1135], right: [645,690] },
-                690:  { left: [993,1035], right: [780,820] },
-                935:  { left: [993,1035], right: [780,820] }
-            };
-            const rule = navRules[currentFrame];
+        function renderNavButtons(baseFrame) {
+            const rule = navRules[baseFrame];
             if (rule) {
                 if (rule.left) {
                     const btn = document.createElement('button');
@@ -409,16 +403,16 @@
             }
         }
         
-        function addHomeButton(currentFrame) {
+        function addHomeButton(baseFrame) {
             const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
-            if (genplanQueueFrames.includes(currentFrame)) return;
+            if (genplanQueueFrames.includes(baseFrame)) return;
             
             let segmentsToPlay = null;
-            if (currentFrame === 344 || currentFrame === 1135) {
+            if (baseFrame === 344 || baseFrame === 1135) {
                 segmentsToPlay = [{start: 1183, end: 1225}];
-            } else if (currentFrame === 509 || currentFrame === 1035) {
+            } else if (baseFrame === 509 || baseFrame === 1035) {
                 segmentsToPlay = [{start: 645, end: 690}, {start: 780, end: 820}];
-            } else if (currentFrame === 690 || currentFrame === 935) {
+            } else if (baseFrame === 690 || baseFrame === 935) {
                 segmentsToPlay = [{start: 780, end: 820}];
             }
             
@@ -431,6 +425,7 @@
                         playSegments(segmentsToPlay, () => {
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
+                            currentBaseFrame = START_FRAME;
                             updateUIByFrame(START_FRAME);
                             startLoop(START_FRAME);
                         });
@@ -441,6 +436,7 @@
                     if (!isPlaying) {
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
+                        currentBaseFrame = START_FRAME;
                         updateUIByFrame(START_FRAME);
                         startLoop(START_FRAME);
                     }
@@ -461,7 +457,6 @@
                     else { start = 1983; end = 2013; }
                     playSegment(start, end, () => {
                         selectedQueue = id;
-                        currentState = "yard";
                     });
                 };
                 centerDiv.appendChild(btn);
@@ -517,7 +512,6 @@
                 else if (selectedQueue === 2) { start = 1845; end = 1875; }
                 else { start = 2091; end = 2128; }
                 playSegment(start, end, () => {
-                    currentState = "genplan";
                     selectedQueue = null;
                 });
             };
@@ -527,36 +521,35 @@
             if (rightBtn) centerDiv.appendChild(rightBtn);
         }
         
-        function updateUIByFrame(currentFrame) {
+        function updateUIByFrame(baseFrame) {
             clearInterface();
-            console.log("updateUIByFrame, кадр:", currentFrame);
+            console.log("updateUIByFrame, базовый кадр:", baseFrame);
             
             const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
-            const yardMap = {
-                1405:1, 2676:1, 3060:1,
-                1718:2, 2360:2, 2942:2,
-                2013:3, 2484:3, 2820:3
-            };
             
-            if (yardMap.hasOwnProperty(currentFrame)) {
-                currentState = "yard";
-                selectedQueue = yardMap[currentFrame];
+            // Определяем состояние: генплан или двор
+            let isYard = false;
+            let queueId = null;
+            if (yardMap.hasOwnProperty(baseFrame)) {
+                isYard = true;
+                queueId = yardMap[baseFrame];
+                selectedQueue = queueId;
             } else {
-                currentState = "genplan";
+                isYard = false;
                 selectedQueue = null;
             }
             
-            renderNavButtons(currentFrame);
+            renderNavButtons(baseFrame);
             
-            if (currentState === "genplan") {
-                if (genplanQueueFrames.includes(currentFrame)) {
+            if (isYard) {
+                renderYardButtons(selectedQueue);
+            } else {
+                if (genplanQueueFrames.includes(baseFrame)) {
                     renderGenplanQueueButtons();
                 }
-                if (!genplanQueueFrames.includes(currentFrame) && currentFrame !== START_FRAME) {
-                    addHomeButton(currentFrame);
+                if (!genplanQueueFrames.includes(baseFrame) && baseFrame !== START_FRAME) {
+                    addHomeButton(baseFrame);
                 }
-            } else if (currentState === "yard") {
-                renderYardButtons(selectedQueue);
             }
         }
         
@@ -595,8 +588,9 @@
                             preloader.style.display = 'none';
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
+                            currentBaseFrame = START_FRAME;
                             updateUIByFrame(START_FRAME);
-                            startLoop(START_FRAME);   // запускаем луп для стартового кадра
+                            startLoop(START_FRAME);
                         });
                     }
                 } else {
@@ -608,6 +602,7 @@
                     preloader.style.display = 'none';
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
+                    currentBaseFrame = START_FRAME;
                     updateUIByFrame(START_FRAME);
                     startLoop(START_FRAME);
                 }
