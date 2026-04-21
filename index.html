@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D навигация по объекту | Плавные переходы</title>
+    <title>3D навигация по объекту</title>
     <style>
         * { box-sizing: border-box; user-select: none; }
         body {
@@ -144,7 +144,7 @@
     let currentState = "genplan";
     let selectedQueue = null;
     let isPlaying = false;
-    let activeTimeUpdateHandler = null;
+    let activeTimeUpdateHandler = null; // для отмены предыдущего
 
     const video = document.getElementById('mainVideo');
     const navLeftDiv = document.getElementById('navLeft');
@@ -157,7 +157,7 @@
         document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
     }
 
-    // Полная остановка текущего воспроизведения и очистка обработчика
+    // Остановка текущего воспроизведения и удаление обработчика
     function stopCurrentPlayback() {
         if (activeTimeUpdateHandler) {
             video.removeEventListener('timeupdate', activeTimeUpdateHandler);
@@ -166,109 +166,62 @@
         if (!video.paused) video.pause();
     }
 
-    // Улучшенный playSegment: плавное воспроизведение от start до end
-    // Перед стартом дожидаемся реальной установки позиции и готовности данных
-    async function playSegment(startFrame, endFrame, onComplete) {
-        if (isPlaying) return;
-        stopCurrentPlayback();
-        
-        const startTime = frameToTime(startFrame);
-        const endTime = frameToTime(endFrame);
-        
-        isPlaying = true;
-        disableAllButtons(true);
-        
-        try {
-            // Устанавливаем позицию
-            video.currentTime = startTime;
-            
-            // Ждём, пока видео действительно перейдёт на нужный кадр
-            await new Promise((resolve) => {
-                if (Math.abs(video.currentTime - startTime) < 0.02 && video.readyState >= 2) {
-                    resolve();
-                    return;
-                }
-                const onSeeked = () => {
-                    video.removeEventListener('seeked', onSeeked);
-                    resolve();
-                };
-                video.addEventListener('seeked', onSeeked);
-                // таймаут на случай, если seeked не сработает
-                setTimeout(() => {
-                    video.removeEventListener('seeked', onSeeked);
-                    resolve();
-                }, 500);
-            });
-            
-            // Если данных недостаточно, ждём canplay
-            if (video.readyState < 2) {
-                await new Promise((resolve) => {
-                    const onCanPlay = () => {
-                        video.removeEventListener('canplay', onCanPlay);
-                        resolve();
-                    };
-                    video.addEventListener('canplay', onCanPlay);
-                    setTimeout(() => {
-                        video.removeEventListener('canplay', onCanPlay);
-                        resolve();
-                    }, 800);
-                });
-            }
-            
-            // Запускаем воспроизведение
-            await video.play();
-            
-            // Создаём обработчик для отслеживания окончания
-            const onUpdate = () => {
-                if (video.currentTime >= endTime) {
-                    video.pause();
-                    video.removeEventListener('timeupdate', onUpdate);
-                    if (activeTimeUpdateHandler === onUpdate) activeTimeUpdateHandler = null;
-                    video.currentTime = endTime; // фиксируем точный финальный кадр
-                    isPlaying = false;
-                    disableAllButtons(false);
-                    if (onComplete) onComplete(endFrame);
-                    updateUIByFrame(endFrame);
-                }
-            };
-            activeTimeUpdateHandler = onUpdate;
-            video.addEventListener('timeupdate', onUpdate);
-            
-        } catch (err) {
-            console.warn("playSegment error:", err);
-            isPlaying = false;
-            disableAllButtons(false);
-            // При ошибке всё равно обновляем UI по текущему кадру
-            updateUIByFrame(Math.round(video.currentTime * FPS));
-        }
-    }
-
-    // Воспроизведение последовательности отрезков (для сложных переходов)
+    // Воспроизведение последовательности отрезков
     async function playSegments(segmentsList, finalCallback) {
         if (isPlaying) return;
-        stopCurrentPlayback();
+        stopCurrentPlayback(); // убираем старый обработчик
         isPlaying = true;
         disableAllButtons(true);
-        
+
         for (const seg of segmentsList) {
             await new Promise((resolve) => {
-                playSegment(seg.start, seg.end, () => resolve());
+                const startTime = frameToTime(seg.start);
+                const endTime = frameToTime(seg.end);
+                video.currentTime = startTime;
+                
+                const onUpdate = () => {
+                    // Останавливаем, когда достигли или превысили endTime
+                    if (video.currentTime >= endTime) {
+                        video.pause();
+                        video.removeEventListener('timeupdate', onUpdate);
+                        if (activeTimeUpdateHandler === onUpdate) activeTimeUpdateHandler = null;
+                        // Принудительно устанавливаем точный конечный кадр
+                        video.currentTime = endTime;
+                        resolve();
+                    }
+                };
+                activeTimeUpdateHandler = onUpdate;
+                video.addEventListener('timeupdate', onUpdate);
+                video.play().catch(err => {
+                    console.warn(err);
+                    video.removeEventListener('timeupdate', onUpdate);
+                    if (activeTimeUpdateHandler === onUpdate) activeTimeUpdateHandler = null;
+                    resolve();
+                });
             });
         }
-        const lastFrame = segmentsList[segmentsList.length-1].end;
+        // Все отрезки завершены
         isPlaying = false;
         disableAllButtons(false);
-        if (finalCallback) finalCallback(lastFrame);
-        updateUIByFrame(lastFrame);
+        const finalFrame = segmentsList[segmentsList.length-1].end;
+        // Убедимся, что видео точно на финальном кадре и остановлено
+        video.currentTime = frameToTime(finalFrame);
+        video.pause();
+        if (finalCallback) finalCallback(finalFrame);
+        updateUIByFrame(finalFrame);
     }
 
-    // Отрисовка интерфейса
+    function playSegment(start, end, onComplete) {
+        playSegments([{start, end}], onComplete);
+    }
+
     function clearInterface() {
         navLeftDiv.innerHTML = '';
         navRightDiv.innerHTML = '';
         centerDiv.innerHTML = '';
     }
 
+    // Кнопки навигации
     function renderNavButtons(currentFrame) {
         const navRules = {
             295:  { left: [896,935], right: [295,344] },
@@ -301,17 +254,18 @@
         }
     }
 
+    // Кнопка "На главную" – только для кадров, где нет кнопок очередей
     function addHomeButton(currentFrame) {
         const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
         if (genplanQueueFrames.includes(currentFrame)) return;
         
         let segmentsToPlay = null;
         if (currentFrame === 344 || currentFrame === 1135) {
-            segmentsToPlay = [{ start: 1183, end: 1225 }];
+            segmentsToPlay = [{start: 1183, end: 1225}];
         } else if (currentFrame === 509 || currentFrame === 1035) {
-            segmentsToPlay = [{ start: 645, end: 690 }, { start: 780, end: 820 }];
+            segmentsToPlay = [{start: 645, end: 690}, {start: 780, end: 820}];
         } else if (currentFrame === 690 || currentFrame === 935) {
-            segmentsToPlay = [{ start: 780, end: 820 }];
+            segmentsToPlay = [{start: 780, end: 820}];
         }
         
         const btn = document.createElement('button');
@@ -422,6 +376,7 @@
             if (genplanQueueFrames.includes(currentFrame)) {
                 renderGenplanQueueButtons();
             }
+            // Кнопка "На главную" – только если не genplanQueueFrames и не стартовый
             if (!genplanQueueFrames.includes(currentFrame) && currentFrame !== START_FRAME) {
                 addHomeButton(currentFrame);
             }
@@ -449,7 +404,10 @@
                     preloader.style.display = 'none';
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
-                    setTimeout(() => updateUIByFrame(START_FRAME), 50);
+                    // Убедимся, что кадр установлен, затем обновим UI
+                    setTimeout(() => {
+                        updateUIByFrame(START_FRAME);
+                    }, 50);
                 }
             } else {
                 loadPercent.textContent = '0%';
