@@ -164,7 +164,7 @@
 <div class="viewer">
     <div class="media-container">
         <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
-        <div id="frameCounter" class="frame-counter">Кадр: 0</div>
+        ////<div id="frameCounter" class="frame-counter">Кадр: 0</div>
     </div>
     <div class="controls" id="controlsPanel">
         <div class="nav-left" id="navLeft"></div>
@@ -187,7 +187,7 @@
         const navLeftDiv = document.getElementById('navLeft');
         const navRightDiv = document.getElementById('navRight');
         const centerDiv = document.getElementById('centerButtons');
-        const frameCounterDiv = document.getElementById('frameCounter');
+        
         
         function frameToTime(frame) { return frame / FPS; }
         
@@ -195,10 +195,7 @@
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
-        function updateFrameCounter() {
-            const currentFrame = Math.round(video.currentTime * FPS);
-            frameCounterDiv.textContent = `Кадр: ${currentFrame} | ${video.paused ? 'Пауза' : 'Играет'}`;
-        }
+        
         
         // Исправленная функция воспроизведения с гарантированной остановкой
         async function playSegments(segmentsList, finalCallback) {
@@ -467,7 +464,7 @@
             preloader.style.display = 'none';
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
-        video.addEventListener('timeupdate', updateFrameCounter);
+        
     })();
 </script>
 </body>
