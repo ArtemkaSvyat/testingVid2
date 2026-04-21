@@ -359,8 +359,9 @@
                 
                 const btn = document.createElement('button');
                 // Выбираем стрелку в зависимости от позиции: 'left' или 'right'
-                const arrow = (position === 'left') ? '← ' : ' →';
-                btn.textContent = `${arrow} Очередь ${target}`;
+                const arrow = (position === 'left') ? '← ' : '';
+                const arrow2 = (position === 'right') ? '' : ' →';
+                btn.textContent = `${arrow} Очередь ${target} ${arrow2}`;
                 btn.onclick = () => {
                     if (isPlaying) return;
                     playSegment(start, end, () => { selectedQueue = target; });
