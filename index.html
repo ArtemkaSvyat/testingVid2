@@ -18,8 +18,8 @@
             font-family: system-ui, 'Segoe UI', sans-serif;
             margin: 0;
             padding: 20px;
-            overflow: hidden;           /* отключаем скролл страницы */
-            overscroll-behavior: none; /* отключаем "тянущийся" скролл на iOS/Android */
+            overflow: hidden;
+            overscroll-behavior: none;
         }
         .viewer {
             position: relative;
@@ -66,9 +66,9 @@
             flex-wrap: wrap;
         }
         button {
-            background: white;           /* белый фон */
-            color: #1a2a4a;             /* тёмно-синий текст */
-            border: 1px solid #c0c0c0;  /* лёгкая граница для видимости на светлом фоне */
+            background: white;
+            color: #1a2a4a;
+            border: 1px solid #c0c0c0;
             padding: 10px 24px;
             border-radius: 40px;
             font-size: 1rem;
@@ -79,7 +79,7 @@
             white-space: nowrap;
         }
         button:hover:not(:disabled) {
-            background: #f0f0f0;        /* чуть темнее при наведении */
+            background: #f0f0f0;
             color: #0f1a2e;
             transform: scale(1.02);
         }
@@ -87,8 +87,8 @@
             transform: scale(0.98);
         }
         button:disabled {
-            background: #e0e0e0;         /* светло-серая заливка */
-            color: #888888;              /* серый текст */
+            background: #e0e0e0;
+            color: #888888;
             opacity: 0.7;
             cursor: not-allowed;
             transform: none;
@@ -336,27 +336,40 @@
         }
         
         function renderYardButtons(currentQueue) {
-            const others = [];
-            if (currentQueue !== 1) others.push(1);
-            if (currentQueue !== 2) others.push(2);
-            if (currentQueue !== 3) others.push(3);
-            others.forEach(target => {
+            // Функция для создания кнопки перехода к определённой очереди
+            function makeQueueButton(target) {
+                let start, end;
+                if (currentQueue === 1 && target === 2) { start = 2330; end = 2360; }
+                else if (currentQueue === 1 && target === 3) { start = 2784; end = 2820; }
+                else if (currentQueue === 2 && target === 1) { start = 3018; end = 3060; }
+                else if (currentQueue === 2 && target === 3) { start = 2452; end = 2484; }
+                else if (currentQueue === 3 && target === 1) { start = 2637; end = 2676; }
+                else if (currentQueue === 3 && target === 2) { start = 2900; end = 2942; }
+                else return null;
+                
                 const btn = document.createElement('button');
                 btn.textContent = `→ Очередь ${target}`;
                 btn.onclick = () => {
                     if (isPlaying) return;
-                    let start, end;
-                    if (currentQueue === 1 && target === 2) { start = 2330; end = 2360; }
-                    else if (currentQueue === 1 && target === 3) { start = 2784; end = 2820; }
-                    else if (currentQueue === 2 && target === 1) { start = 3018; end = 3060; }
-                    else if (currentQueue === 2 && target === 3) { start = 2452; end = 2484; }
-                    else if (currentQueue === 3 && target === 1) { start = 2637; end = 2676; }
-                    else if (currentQueue === 3 && target === 2) { start = 2900; end = 2942; }
-                    else return;
                     playSegment(start, end, () => { selectedQueue = target; });
                 };
-                centerDiv.appendChild(btn);
-            });
+                return btn;
+            }
+            
+            // Определяем порядок в зависимости от текущей очереди
+            let order = [];
+            if (currentQueue === 1) {
+                order = [2, 3]; // сначала очередь 2, потом Генплан, потом очередь 3
+            } else if (currentQueue === 2) {
+                order = [3, 1]; // сначала очередь 3, потом Генплан, потом очередь 1
+            } else { // 3
+                order = [1, 2]; // сначала очередь 1, потом Генплан, потом очередь 2
+            }
+            
+            const btn1 = makeQueueButton(order[0]);
+            if (btn1) centerDiv.appendChild(btn1);
+            
+            // Кнопка "Генплан"
             const backBtn = document.createElement('button');
             backBtn.textContent = "Генплан";
             backBtn.style.background = "white";
@@ -374,6 +387,9 @@
                 });
             };
             centerDiv.appendChild(backBtn);
+            
+            const btn2 = makeQueueButton(order[1]);
+            if (btn2) centerDiv.appendChild(btn2);
         }
         
         function updateUIByFrame(currentFrame) {
@@ -453,7 +469,6 @@
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
         
-        // Отключаем скролл колёсиком мыши на всей странице
         window.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
     })();
 </script>
