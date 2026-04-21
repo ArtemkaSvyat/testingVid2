@@ -252,7 +252,11 @@
         }
         
         // Кнопка "На главную" (возврат на 295) с учётом особых последовательностей
+        // НЕ вызываем, если текущий кадр входит в genplanQueueFrames (там кнопка "На главную" не нужна)
         function addHomeButton(currentFrame) {
+            const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
+            if (genplanQueueFrames.includes(currentFrame)) return; // не показываем на этих кадрах
+            
             let segmentsToPlay = null;
             if (currentFrame === 344 || currentFrame === 1135) {
                 segmentsToPlay = [{start: 1183, end: 1225}];
@@ -309,7 +313,6 @@
         
         // Кнопки режима двора (переход между очередями + "Генплан")
         function renderYardButtons(currentQueue) {
-            // переходы к другим очередям
             const others = [];
             if (currentQueue !== 1) others.push(1);
             if (currentQueue !== 2) others.push(2);
@@ -375,22 +378,16 @@
             
             // Рисуем центральные кнопки
             if (currentState === "genplan") {
-                // Кнопки очередей, если кадр подходит
                 if (genplanQueueFrames.includes(currentFrame)) {
                     renderGenplanQueueButtons();
                 }
-                // Кнопка "На главную" — всегда, кроме самого стартового кадра
-                if (currentFrame !== START_FRAME) {
+                // Кнопка "На главную" — только если не в genplanQueueFrames и не стартовый кадр
+                if (!genplanQueueFrames.includes(currentFrame) && currentFrame !== START_FRAME) {
                     addHomeButton(currentFrame);
                 }
             } else if (currentState === "yard") {
                 renderYardButtons(selectedQueue);
-                // В режиме двора тоже можно добавить "На главную"? Не нужно, есть "Генплан".
-            }
-            
-            // Если центр всё ещё пуст (например, на навигационных кадрах без очередей, но стартовый кадр не 295), то добавим "На главную"
-            if (centerDiv.children.length === 0 && currentFrame !== START_FRAME) {
-                addHomeButton(currentFrame);
+                // В режиме двора "На главную" не нужна (есть "Генплан")
             }
         }
         
@@ -414,7 +411,10 @@
                         // Принудительно ставим стартовый кадр
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
-                        updateUIByFrame(START_FRAME);
+                        // Небольшая задержка для надёжности
+                        setTimeout(() => {
+                            updateUIByFrame(START_FRAME);
+                        }, 50);
                     }
                 } else {
                     loadPercent.textContent = '0%';
