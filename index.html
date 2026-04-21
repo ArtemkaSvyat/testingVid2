@@ -18,7 +18,6 @@
             font-family: system-ui, 'Segoe UI', sans-serif;
             margin: 0;
             padding: 20px;
-            overflow: hidden; /* полностью запрещаем скролл страницы */
         }
         .viewer {
             position: relative;
@@ -33,7 +32,6 @@
             position: relative;
             aspect-ratio: 16 / 9;
             background: #000;
-            touch-action: none; /* отключает скролл на контейнере */
         }
         video {
             position: absolute;
@@ -42,7 +40,6 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            pointer-events: none; /* видео не перехватывает события, всё обрабатывает контейнер */
         }
         .controls {
             display: flex;
@@ -126,6 +123,20 @@
             font-size: 24px;
             font-weight: bold;
         }
+        .frame-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 16px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            z-index: 1000;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
         @media (max-width: 700px) {
             .controls {
                 flex-direction: column;
@@ -133,6 +144,11 @@
             }
             .nav-left, .nav-right, .center-buttons {
                 justify-content: center;
+            }
+            .frame-counter {
+                font-size: 12px;
+                top: 10px;
+                right: 10px;
             }
         }
     </style>
@@ -146,8 +162,9 @@
 </div>
 
 <div class="viewer">
-    <div class="media-container" id="mediaContainer">
+    <div class="media-container">
         <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
+       
     </div>
     <div class="controls" id="controlsPanel">
         <div class="nav-left" id="navLeft"></div>
@@ -166,26 +183,11 @@
         let selectedQueue = null;
         let isPlaying = false;
         
-        const mediaContainer = document.getElementById('mediaContainer');
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
         const navRightDiv = document.getElementById('navRight');
         const centerDiv = document.getElementById('centerButtons');
         
-        const NAV_RULES = {
-            270:  { left: [896,935], right: [295,344] },
-            820:  { left: [896,935], right: [295,344] },
-            1225: { left: [896,935], right: [295,344] },
-            1540: { left: [896,935], right: [295,344] },
-            1875: { left: [896,935], right: [295,344] },
-            2128: { left: [896,935], right: [295,344] },
-            344:  { left: [1183,1225], right: [465,509] },
-            1135: { left: [1183,1225], right: [465,509] },
-            509:  { left: [1090,1135], right: [645,690] },
-            1035: { left: [1090,1135], right: [645,690] },
-            690:  { left: [993,1035], right: [780,820] },
-            935:  { left: [993,1035], right: [780,820] }
-        };
         
         function frameToTime(frame) { return frame / FPS; }
         
@@ -193,6 +195,9 @@
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
+        
+        
+        // Исправленная функция воспроизведения с гарантированной остановкой
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
             isPlaying = true;
@@ -211,11 +216,12 @@
                             finished = true;
                             video.removeEventListener('timeupdate', onUpdate);
                             video.pause();
-                            video.currentTime = endTime;
+                            video.currentTime = endTime; // фиксация на конечном кадре
                             resolve();
                         }
                     };
                     video.addEventListener('timeupdate', onUpdate);
+                    // Таймер на случай, если событие не сработает
                     const timeout = setTimeout(() => {
                         if (!finished) {
                             finished = true;
@@ -255,7 +261,21 @@
         }
         
         function renderNavButtons(currentFrame) {
-            const rule = NAV_RULES[currentFrame];
+            const navRules = {
+                270:  { left: [896,935], right: [295,344] },
+                820:  { left: [896,935], right: [295,344] },
+                1225: { left: [896,935], right: [295,344] },
+                1540: { left: [896,935], right: [295,344] },
+                1875: { left: [896,935], right: [295,344] },
+                2128: { left: [896,935], right: [295,344] },
+                344:  { left: [1183,1225], right: [465,509] },
+                1135: { left: [1183,1225], right: [465,509] },
+                509:  { left: [1090,1135], right: [645,690] },
+                1035: { left: [1090,1135], right: [645,690] },
+                690:  { left: [993,1035], right: [780,820] },
+                935:  { left: [993,1035], right: [780,820] }
+            };
+            const rule = navRules[currentFrame];
             if (rule) {
                 if (rule.left) {
                     const btn = document.createElement('button');
@@ -401,93 +421,6 @@
             }
         }
         
-        // ========== УПРАВЛЕНИЕ СВАЙПАМИ (ИНВЕРТИРОВАННЫМИ) НА ВСЕМ ОКНЕ ==========
-        let touchStartX = 0;
-        let dragStartX = 0;
-        let isDragging = false;
-        let swipeStartedInside = false;
-        const SWIPE_THRESHOLD = 50;
-        
-        function getTransitionForDirection(direction) {
-            const currentFrame = Math.round(video.currentTime * FPS);
-            const rule = NAV_RULES[currentFrame];
-            if (rule && rule[direction]) {
-                return { start: rule[direction][0], end: rule[direction][1] };
-            }
-            return null;
-        }
-        
-        function onPointerStart(e) {
-            if (isPlaying) return;
-            // Проверяем, что касание началось внутри mediaContainer (или на дочерних элементах)
-            let target = e.target;
-            if (!mediaContainer.contains(target)) return;
-            
-            e.preventDefault(); // запрещаем скролл
-            let clientX;
-            if (e.touches) {
-                clientX = e.touches[0].clientX;
-            } else {
-                clientX = e.clientX;
-            }
-            touchStartX = clientX;
-            dragStartX = clientX;
-            isDragging = true;
-            swipeStartedInside = true;
-        }
-        
-        function onPointerMove(e) {
-            if (!isDragging || isPlaying || !swipeStartedInside) return;
-            e.preventDefault();
-            let currentX, currentY;
-            if (e.touches) {
-                currentX = e.touches[0].clientX;
-                currentY = e.touches[0].clientY;
-            } else {
-                currentX = e.clientX;
-                currentY = e.clientY;
-            }
-            const deltaX = currentX - dragStartX;
-            const deltaY = currentY - touchStartX; // приблизительная вертикаль
-            if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < 100) {
-                // ИНВЕРТИРОВАНИЕ: свайп вправо -> вызов left, свайп влево -> вызов right
-                if (deltaX > 0) {
-                    const transition = getTransitionForDirection('left');
-                    if (transition && !isPlaying) {
-                        isDragging = false;
-                        swipeStartedInside = false;
-                        playSegment(transition.start, transition.end);
-                    }
-                } else {
-                    const transition = getTransitionForDirection('right');
-                    if (transition && !isPlaying) {
-                        isDragging = false;
-                        swipeStartedInside = false;
-                        playSegment(transition.start, transition.end);
-                    }
-                }
-                isDragging = false;
-                swipeStartedInside = false;
-            }
-        }
-        
-        function onPointerEnd(e) {
-            isDragging = false;
-            swipeStartedInside = false;
-            e.preventDefault();
-        }
-        
-        // Навешиваем обработчики на window, но с проверкой начала внутри mediaContainer
-        window.addEventListener('touchstart', onPointerStart, { passive: false });
-        window.addEventListener('touchmove', onPointerMove, { passive: false });
-        window.addEventListener('touchend', onPointerEnd);
-        window.addEventListener('mousedown', onPointerStart);
-        window.addEventListener('mousemove', onPointerMove);
-        window.addEventListener('mouseup', onPointerEnd);
-        // Отключаем скролл колесика на контейнере
-        mediaContainer.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
-        
-        // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
@@ -531,6 +464,7 @@
             preloader.style.display = 'none';
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
+        
     })();
 </script>
 </body>
