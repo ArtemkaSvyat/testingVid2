@@ -302,7 +302,7 @@
             }
             
             const btn = document.createElement('button');
-            btn.textContent = "🏠 На главную";
+            btn.textContent = "Генплан";
             btn.className = "home-btn";
             if (segmentsToPlay) {
                 btn.onclick = () => {
@@ -346,7 +346,8 @@
         }
         
         function renderYardButtons(currentQueue) {
-            function makeQueueButton(target) {
+            // Создание кнопки перехода к другой очереди с учётом направления
+            function makeQueueButton(target, position) {
                 let start, end;
                 if (currentQueue === 1 && target === 2) { start = 2330; end = 2360; }
                 else if (currentQueue === 1 && target === 3) { start = 2784; end = 2820; }
@@ -357,7 +358,9 @@
                 else return null;
                 
                 const btn = document.createElement('button');
-                btn.textContent = `→ Очередь ${target}`;
+                // Выбираем стрелку в зависимости от позиции: 'left' или 'right'
+                const arrow = (position === 'left') ? '← ' : ' →';
+                btn.textContent = `${arrow} Очередь ${target}`;
                 btn.onclick = () => {
                     if (isPlaying) return;
                     playSegment(start, end, () => { selectedQueue = target; });
@@ -365,18 +368,23 @@
                 return btn;
             }
             
-            let order = [];
+            // Определяем порядок: [левая очередь, правая очередь]
+            let leftTarget, rightTarget;
             if (currentQueue === 1) {
-                order = [2, 3];
+                leftTarget = 2;
+                rightTarget = 3;
             } else if (currentQueue === 2) {
-                order = [3, 1];
-            } else {
-                order = [1, 2];
+                leftTarget = 3;
+                rightTarget = 1;
+            } else { // 3
+                leftTarget = 1;
+                rightTarget = 2;
             }
             
-            const btn1 = makeQueueButton(order[0]);
-            if (btn1) centerDiv.appendChild(btn1);
+            const leftBtn = makeQueueButton(leftTarget, 'left');
+            if (leftBtn) centerDiv.appendChild(leftBtn);
             
+            // Кнопка "Генплан"
             const backBtn = document.createElement('button');
             backBtn.textContent = "Генплан";
             backBtn.style.background = "white";
@@ -395,8 +403,8 @@
             };
             centerDiv.appendChild(backBtn);
             
-            const btn2 = makeQueueButton(order[1]);
-            if (btn2) centerDiv.appendChild(btn2);
+            const rightBtn = makeQueueButton(rightTarget, 'right');
+            if (rightBtn) centerDiv.appendChild(rightBtn);
         }
         
         function updateUIByFrame(currentFrame) {
