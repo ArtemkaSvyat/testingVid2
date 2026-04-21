@@ -2,12 +2,13 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>3D навигация по объекту</title>
     <style>
         * {
             box-sizing: border-box;
             user-select: none;
+            touch-action: manipulation; /* улучшает отзывчивость, но не запрещает зум полностью, нужен js */
         }
         body {
             background: #111;
@@ -79,6 +80,7 @@
             white-space: nowrap;
             min-width: 140px;
             text-align: center;
+            touch-action: manipulation; /* улучшает клик на тач-устройствах */
         }
         button:hover:not(:disabled) {
             background: #f0f0f0;
@@ -176,6 +178,31 @@
 
 <script>
     (function() {
+        // ========== БЛОКИРОВКА ЗУМА (жесты и двойное нажатие) ==========
+        // Запрещаем масштабирование жестами (pinch) на всей странице
+        document.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+        });
+        // Запрещаем двойное нажатие (double-tap) для зума
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function(e) {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+        // Дополнительно: запрещаем зум через Ctrl + колесо мыши (на десктопе)
+        window.addEventListener('wheel', function(e) {
+            if (e.ctrlKey) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        // Запрещаем двойной клик мышью (для десктопа)
+        document.addEventListener('dblclick', function(e) {
+            e.preventDefault();
+        });
+        // ========== ОСТАЛЬНАЯ ЛОГИКА ==========
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
         const START_FRAME = 270;
@@ -346,7 +373,6 @@
         }
         
         function renderYardButtons(currentQueue) {
-            // Создание кнопки перехода к другой очереди с учётом направления
             function makeQueueButton(target, position) {
                 let start, end;
                 if (currentQueue === 1 && target === 2) { start = 2330; end = 2360; }
@@ -358,7 +384,6 @@
                 else return null;
                 
                 const btn = document.createElement('button');
-                // Выбираем стрелку в зависимости от позиции: 'left' или 'right'
                 const arrow = (position === 'left') ? '← ' : '';
                 const arrow2 = (position === 'left') ? '' : ' →';
                 btn.textContent = `${arrow} Очередь ${target} ${arrow2}`;
@@ -369,7 +394,6 @@
                 return btn;
             }
             
-            // Определяем порядок: [левая очередь, правая очередь]
             let leftTarget, rightTarget;
             if (currentQueue === 1) {
                 leftTarget = 2;
@@ -377,7 +401,7 @@
             } else if (currentQueue === 2) {
                 leftTarget = 3;
                 rightTarget = 1;
-            } else { // 3
+            } else {
                 leftTarget = 1;
                 rightTarget = 2;
             }
@@ -385,7 +409,6 @@
             const leftBtn = makeQueueButton(leftTarget, 'left');
             if (leftBtn) centerDiv.appendChild(leftBtn);
             
-            // Кнопка "Генплан"
             const backBtn = document.createElement('button');
             backBtn.textContent = "Генплан";
             backBtn.style.background = "white";
@@ -485,6 +508,7 @@
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
         
+        // Дополнительная блокировка зума через wheel (уже есть выше, но оставим)
         window.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
     })();
 </script>
