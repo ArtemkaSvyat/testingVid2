@@ -8,7 +8,7 @@
         * {
             box-sizing: border-box;
             user-select: none;
-            touch-action: manipulation; /* улучшает отзывчивость, но не запрещает зум полностью, нужен js */
+            touch-action: manipulation;
         }
         body {
             background: #111;
@@ -80,7 +80,7 @@
             white-space: nowrap;
             min-width: 140px;
             text-align: center;
-            touch-action: manipulation; /* улучшает клик на тач-устройствах */
+            touch-action: manipulation;
         }
         button:hover:not(:disabled) {
             background: #f0f0f0;
@@ -178,12 +178,8 @@
 
 <script>
     (function() {
-        // ========== БЛОКИРОВКА ЗУМА (жесты и двойное нажатие) ==========
-        // Запрещаем масштабирование жестами (pinch) на всей странице
-        document.addEventListener('gesturestart', function(e) {
-            e.preventDefault();
-        });
-        // Запрещаем двойное нажатие (double-tap) для зума
+        // ========== БЛОКИРОВКА ЗУМА ==========
+        document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
         let lastTouchEnd = 0;
         document.addEventListener('touchend', function(e) {
             const now = Date.now();
@@ -192,17 +188,12 @@
             }
             lastTouchEnd = now;
         }, false);
-        // Дополнительно: запрещаем зум через Ctrl + колесо мыши (на десктопе)
         window.addEventListener('wheel', function(e) {
-            if (e.ctrlKey) {
-                e.preventDefault();
-            }
+            if (e.ctrlKey) e.preventDefault();
         }, { passive: false });
-        // Запрещаем двойной клик мышью (для десктопа)
-        document.addEventListener('dblclick', function(e) {
-            e.preventDefault();
-        });
-        // ========== ОСТАЛЬНАЯ ЛОГИКА ==========
+        document.addEventListener('dblclick', function(e) { e.preventDefault(); });
+        
+        // ========== ОСНОВНАЯ ЛОГИКА ==========
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
         const START_FRAME = 270;
@@ -215,6 +206,8 @@
         const navLeftDiv = document.getElementById('navLeft');
         const navRightDiv = document.getElementById('navRight');
         const centerDiv = document.getElementById('centerButtons');
+        const preloader = document.getElementById('preloader');
+        const loadPercent = document.getElementById('load-percent');
         
         function frameToTime(frame) { return frame / FPS; }
         
@@ -464,8 +457,25 @@
             }
         }
         
-        const preloader = document.getElementById('preloader');
-        const loadPercent = document.getElementById('load-percent');
+        // ========== ОЖИДАНИЕ ПОЛНОЙ ГОТОВНОСТИ ВИДЕО ==========
+        function waitForVideoReady() {
+            return new Promise((resolve) => {
+                if (video.readyState >= 3) { // HAVE_FUTURE_DATA или HAVE_ENOUGH_DATA
+                    resolve();
+                    return;
+                }
+                const onCanPlayThrough = () => {
+                    video.removeEventListener('canplaythrough', onCanPlayThrough);
+                    resolve();
+                };
+                video.addEventListener('canplaythrough', onCanPlayThrough);
+                // Запасной таймер на случай, если canplaythrough не сработает
+                setTimeout(() => {
+                    video.removeEventListener('canplaythrough', onCanPlayThrough);
+                    resolve();
+                }, 5000);
+            });
+        }
         
         function startApp() {
             let lastPercent = 0;
@@ -479,17 +489,21 @@
                     }
                     if (percent >= 100) {
                         clearInterval(interval);
-                        preloader.style.display = 'none';
-                        video.currentTime = frameToTime(START_FRAME);
-                        video.pause();
-                        setTimeout(() => {
-                            updateUIByFrame(START_FRAME);
-                        }, 50);
+                        // Дожидаемся реальной готовности видео
+                        waitForVideoReady().then(() => {
+                            preloader.style.display = 'none';
+                            video.currentTime = frameToTime(START_FRAME);
+                            video.pause();
+                            setTimeout(() => {
+                                updateUIByFrame(START_FRAME);
+                            }, 50);
+                        });
                     }
                 } else {
                     loadPercent.textContent = '0%';
                 }
             }, 200);
+            // Защита от бесконечной загрузки
             setTimeout(() => {
                 if (preloader.style.display !== 'none') {
                     preloader.style.display = 'none';
@@ -508,7 +522,6 @@
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
         
-        // Дополнительная блокировка зума через wheel (уже есть выше, но оставим)
         window.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
     })();
 </script>
