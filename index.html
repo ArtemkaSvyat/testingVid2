@@ -196,7 +196,7 @@
         // ========== ОСНОВНАЯ ЛОГИКА ==========
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
-        const START_FRAME = 270;
+        const START_FRAME = 1;
         
         let currentState = "genplan";
         let selectedQueue = null;
@@ -278,7 +278,7 @@
         
         function renderNavButtons(currentFrame) {
             const navRules = {
-                270:  { left: [896,935], right: [295,344] },
+                1:  { left: [896,935], right: [295,344] },
                 820:  { left: [896,935], right: [295,344] },
                 1225: { left: [896,935], right: [295,344] },
                 1540: { left: [896,935], right: [295,344] },
@@ -309,7 +309,7 @@
         }
         
         function addHomeButton(currentFrame) {
-            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
+            const genplanQueueFrames = [1, 820, 1225, 1540, 1875, 2128];
             if (genplanQueueFrames.includes(currentFrame)) return;
             
             let segmentsToPlay = null;
@@ -428,7 +428,7 @@
             clearInterface();
             console.log("updateUIByFrame, кадр:", currentFrame);
             
-            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
+            const genplanQueueFrames = [1, 820, 1225, 1540, 1875, 2128];
             const yardMap = {
                 1405:1, 2676:1, 3060:1,
                 1718:2, 2360:2, 2942:2,
