@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>3D навигация по объекту</title>
     <style>
+        /* ваш исходный CSS без изменений */
         * {
             box-sizing: border-box;
             user-select: none;
@@ -202,6 +203,117 @@
         let selectedQueue = null;
         let isPlaying = false;
         
+        // --- Логика лупов ---
+        let loopActive = false;
+        let loopTimeout = null;
+        let nextFrameMap = {};       // currentFrame -> nextFrame
+        let allKeyFrames = [];
+        
+        // Функция сбора всех ключевых кадров
+        function collectKeyFrames() {
+            const framesSet = new Set();
+            framesSet.add(START_FRAME);
+            
+            // Из navRules
+            const navRules = {
+                270:  { left: [896,935], right: [295,344] },
+                820:  { left: [896,935], right: [295,344] },
+                1225: { left: [896,935], right: [295,344] },
+                1540: { left: [896,935], right: [295,344] },
+                1875: { left: [896,935], right: [295,344] },
+                2128: { left: [896,935], right: [295,344] },
+                344:  { left: [1183,1225], right: [465,509] },
+                1135: { left: [1183,1225], right: [465,509] },
+                509:  { left: [1090,1135], right: [645,690] },
+                1035: { left: [1090,1135], right: [645,690] },
+                690:  { left: [993,1035], right: [780,820] },
+                935:  { left: [993,1035], right: [780,820] }
+            };
+            for (let key in navRules) {
+                let k = parseInt(key);
+                framesSet.add(k);
+                let rule = navRules[key];
+                if (rule.left) {
+                    framesSet.add(rule.left[0]);
+                    framesSet.add(rule.left[1]);
+                }
+                if (rule.right) {
+                    framesSet.add(rule.right[0]);
+                    framesSet.add(rule.right[1]);
+                }
+            }
+            // Из yardMap
+            const yardMap = {
+                1405:1, 2676:1, 3060:1,
+                1718:2, 2360:2, 2942:2,
+                2013:3, 2484:3, 2820:3
+            };
+            for (let key in yardMap) {
+                framesSet.add(parseInt(key));
+            }
+            // Добавим последний кадр видео (будет определён позже, пока заглушка)
+            allKeyFrames = Array.from(framesSet).sort((a,b) => a - b);
+        }
+        
+        function buildNextFrameMap(lastFrame) {
+            // Добавляем последний кадр, если его нет
+            if (!allKeyFrames.includes(lastFrame)) {
+                allKeyFrames.push(lastFrame);
+                allKeyFrames.sort((a,b) => a - b);
+            }
+            nextFrameMap = {};
+            for (let i = 0; i < allKeyFrames.length - 1; i++) {
+                nextFrameMap[allKeyFrames[i]] = allKeyFrames[i+1];
+            }
+            // Для последнего кадра нет следующего
+        }
+        
+        // Функция запуска лупа
+        function startLoop(currentFrame) {
+            // Останавливаем предыдущий луп
+            if (loopTimeout) {
+                clearTimeout(loopTimeout);
+                loopTimeout = null;
+            }
+            loopActive = false;
+            
+            const nextFrame = nextFrameMap[currentFrame];
+            if (!nextFrame || currentFrame === nextFrame) {
+                // нет следующего кадра или это последний — просто пауза
+                video.pause();
+                return;
+            }
+            
+            loopActive = true;
+            const startTime = frameToTime(currentFrame);
+            const endTime = frameToTime(nextFrame);
+            
+            function playLoopSegment() {
+                if (!loopActive) return;
+                video.currentTime = startTime;
+                const onUpdate = () => {
+                    if (video.currentTime >= endTime) {
+                        video.removeEventListener('timeupdate', onUpdate);
+                        // Зацикливаем: снова запускаем этот же отрезок
+                        if (loopActive) {
+                            playLoopSegment();
+                        }
+                    }
+                };
+                video.addEventListener('timeupdate', onUpdate);
+                video.play().catch(err => console.warn('Loop play error', err));
+                // Сохраняем обработчик для возможной остановки (не обязательно, но для чистоты)
+                loopTimeout = setTimeout(() => {
+                    if (loopActive) {
+                        video.removeEventListener('timeupdate', onUpdate);
+                        loopActive = false;
+                    }
+                }, 3600000);
+            }
+            playLoopSegment();
+        }
+        
+        // Оригинальные функции (не трогаем, кроме playSegments, где добавим вызов лупа)
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
         const navRightDiv = document.getElementById('navRight');
@@ -217,6 +329,13 @@
         
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
+            // Останавливаем любой активный луп
+            if (loopTimeout) {
+                clearTimeout(loopTimeout);
+                loopTimeout = null;
+            }
+            loopActive = false;
+            
             isPlaying = true;
             disableAllButtons(true);
             
@@ -264,6 +383,8 @@
             video.pause();
             if (finalCallback) finalCallback(finalFrame);
             updateUIByFrame(finalFrame);
+            // Запускаем луп от конечного кадра
+            startLoop(finalFrame);
         }
         
         function playSegment(start, end, onComplete) {
@@ -331,6 +452,7 @@
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
                             updateUIByFrame(START_FRAME);
+                            startLoop(START_FRAME);
                         });
                     }
                 };
@@ -340,6 +462,7 @@
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
                         updateUIByFrame(START_FRAME);
+                        startLoop(START_FRAME);
                     }
                 };
             }
@@ -460,7 +583,7 @@
         // ========== ОЖИДАНИЕ ПОЛНОЙ ГОТОВНОСТИ ВИДЕО ==========
         function waitForVideoReady() {
             return new Promise((resolve) => {
-                if (video.readyState >= 3) { // HAVE_FUTURE_DATA или HAVE_ENOUGH_DATA
+                if (video.readyState >= 3) {
                     resolve();
                     return;
                 }
@@ -469,7 +592,6 @@
                     resolve();
                 };
                 video.addEventListener('canplaythrough', onCanPlayThrough);
-                // Запасной таймер на случай, если canplaythrough не сработает
                 setTimeout(() => {
                     video.removeEventListener('canplaythrough', onCanPlayThrough);
                     resolve();
@@ -489,13 +611,18 @@
                     }
                     if (percent >= 100) {
                         clearInterval(interval);
-                        // Дожидаемся реальной готовности видео
                         waitForVideoReady().then(() => {
+                            // Строим карту ключевых кадров с учётом последнего кадра видео
+                            const lastFrame = Math.floor(video.duration * FPS);
+                            collectKeyFrames();
+                            buildNextFrameMap(lastFrame);
+                            
                             preloader.style.display = 'none';
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
                             setTimeout(() => {
                                 updateUIByFrame(START_FRAME);
+                                startLoop(START_FRAME);
                             }, 50);
                         });
                     }
@@ -503,13 +630,13 @@
                     loadPercent.textContent = '0%';
                 }
             }, 200);
-            // Защита от бесконечной загрузки
             setTimeout(() => {
                 if (preloader.style.display !== 'none') {
                     preloader.style.display = 'none';
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
                     updateUIByFrame(START_FRAME);
+                    startLoop(START_FRAME);
                 }
             }, 15000);
         }
