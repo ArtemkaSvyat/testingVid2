@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>3D навигация по объекту</title>
-    <style> 
+    <style>
         * {
             box-sizing: border-box;
             user-select: none;
@@ -141,7 +141,7 @@
 <div id="preloader">
     <div class="spinner"></div>
     <div id="load-percent">0%</div>
-    <div>Загрузка сцены...</div>
+    <div>Загрузка видео...</div>
 </div>
 
 <div class="viewer">
@@ -166,6 +166,7 @@
         let currentState = "genplan";   // "genplan" или "yard"
         let selectedQueue = null;       // 1,2,3
         let isPlaying = false;
+        let pendingSegments = [];        // для последовательного воспроизведения (например, возврат на главную через два отрезка)
         
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
@@ -180,33 +181,49 @@
             btns.forEach(btn => btn.disabled = disabled);
         }
         
-        // Воспроизведение отрезка
-        function playSegment(startFrame, endFrame, onCompleteCallback) {
+        // Воспроизведение одного отрезка
+        function playSingleSegment(startFrame, endFrame, onComplete) {
+            return new Promise((resolve) => {
+                const startTime = frameToTime(startFrame);
+                const endTime = frameToTime(endFrame);
+                video.currentTime = startTime;
+                
+                const onTimeUpdate = () => {
+                    if (video.currentTime >= endTime) {
+                        video.pause();
+                        video.removeEventListener('timeupdate', onTimeUpdate);
+                        resolve();
+                    }
+                };
+                video.addEventListener('timeupdate', onTimeUpdate);
+                video.play().catch(err => {
+                    console.warn('Автовоспроизведение заблокировано:', err);
+                    video.removeEventListener('timeupdate', onTimeUpdate);
+                    resolve(); // всё равно продолжаем
+                });
+            });
+        }
+        
+        // Воспроизведение одного или нескольких отрезков последовательно
+        async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
             isPlaying = true;
             disableAllButtons(true);
             
-            const startTime = frameToTime(startFrame);
-            const endTime = frameToTime(endFrame);
-            video.currentTime = startTime;
-            
-            const onTimeUpdate = () => {
-                if (video.currentTime >= endTime) {
-                    video.pause();
-                    video.removeEventListener('timeupdate', onTimeUpdate);
-                    isPlaying = false;
-                    disableAllButtons(false);
-                    if (onCompleteCallback) onCompleteCallback(endFrame);
-                    updateUIByFrame(endFrame);
-                }
-            };
-            video.addEventListener('timeupdate', onTimeUpdate);
-            video.play().catch(err => {
-                console.warn('Автовоспроизведение заблокировано:', err);
-                video.removeEventListener('timeupdate', onTimeUpdate);
-                isPlaying = false;
-                disableAllButtons(false);
-            });
+            for (const seg of segmentsList) {
+                await playSingleSegment(seg.start, seg.end);
+            }
+            // Все отрезки проиграны
+            isPlaying = false;
+            disableAllButtons(false);
+            const finalFrame = segmentsList[segmentsList.length-1].end;
+            if (finalCallback) finalCallback(finalFrame);
+            updateUIByFrame(finalFrame);
+        }
+        
+        // Упрощённый вызов для одного отрезка
+        function playSegment(startFrame, endFrame, onComplete) {
+            playSegments([{start: startFrame, end: endFrame}], onComplete);
         }
         
         // ======================= ОТРИСОВКА ИНТЕРФЕЙСА =======================
@@ -216,29 +233,40 @@
             centerDiv.innerHTML = '';
         }
         
-        // Отобразить кнопки навигации (влево/вправо) если доступны
+        // Отобразить кнопки навигации (влево/вправо) на основе текущего кадра
         function renderNavButtons(currentFrame) {
-            const navMap = {
-                295: { right: [295,344], left: [896,935] },
-                344: { right: [465,509], left: [1183,1225] },
-                465: { right: [645,690], left: [1090,1135] },
-                690: { right: [780,820], left: [993,1035] }
+            // Определяем, какие переходы доступны с этого кадра
+            // Формат: для каждого кадра определяем { left: [start, end], right: [start, end] }
+            const navRules = {
+                295:  { left: [896,935], right: [295,344] },
+                820:  { left: [896,935], right: [295,344] },
+                1225: { left: [896,935], right: [295,344] },
+                1540: { left: [896,935], right: [295,344] },
+                1875: { left: [896,935], right: [295,344] },
+                2128: { left: [896,935], right: [295,344] },
+                344:  { left: [1183,1225], right: [465,509] },
+                1135: { left: [1183,1225], right: [465,509] },
+                509:  { left: [1090,1135], right: [645,690] },
+                1035: { left: [1090,1135], right: [645,690] },
+                690:  { left: [993,1035], right: [780,820] },
+                935:  { left: [993,1035], right: [780,820] }
             };
-            const nav = navMap[currentFrame];
-            if (nav) {
-                if (nav.left) {
+            
+            const rule = navRules[currentFrame];
+            if (rule) {
+                if (rule.left) {
                     const leftBtn = document.createElement('button');
                     leftBtn.textContent = "← Влево";
                     leftBtn.addEventListener('click', () => {
-                        if (!isPlaying) playSegment(nav.left[0], nav.left[1], null);
+                        if (!isPlaying) playSegment(rule.left[0], rule.left[1], null);
                     });
                     navLeftDiv.appendChild(leftBtn);
                 }
-                if (nav.right) {
+                if (rule.right) {
                     const rightBtn = document.createElement('button');
                     rightBtn.textContent = "Вправо →";
                     rightBtn.addEventListener('click', () => {
-                        if (!isPlaying) playSegment(nav.right[0], nav.right[1], null);
+                        if (!isPlaying) playSegment(rule.right[0], rule.right[1], null);
                     });
                     navRightDiv.appendChild(rightBtn);
                 }
@@ -246,21 +274,47 @@
         }
         
         // Кнопка "На главную" (возврат на 295)
-        function renderHomeButton() {
+        // В зависимости от текущего кадра, выбираем последовательность отрезков
+        function addHomeButton() {
+            const currentFrame = Math.round(video.currentTime * FPS);
+            let segmentsToPlay = [];
+            
+            if (currentFrame === 344 || currentFrame === 1135) {
+                segmentsToPlay = [{start: 1183, end: 1225}];
+            } else if (currentFrame === 509 || currentFrame === 1035) {
+                segmentsToPlay = [{start: 645, end: 690}, {start: 780, end: 820}];
+            } else if (currentFrame === 690 || currentFrame === 935) {
+                segmentsToPlay = [{start: 780, end: 820}];
+            } else {
+                // Для всех остальных случаев просто перемотка на 295 без анимации
+                const homeBtn = document.createElement('button');
+                homeBtn.textContent = "🏠 На главную";
+                homeBtn.className = "home-btn";
+                homeBtn.addEventListener('click', () => {
+                    if (!isPlaying) {
+                        video.currentTime = frameToTime(START_FRAME);
+                        video.pause();
+                        updateUIByFrame(START_FRAME);
+                    }
+                });
+                centerDiv.appendChild(homeBtn);
+                return;
+            }
+            
+            // Если есть отрезки для воспроизведения
             const homeBtn = document.createElement('button');
             homeBtn.textContent = "🏠 На главную";
             homeBtn.className = "home-btn";
             homeBtn.addEventListener('click', () => {
                 if (!isPlaying) {
-                    playSegment(START_FRAME, START_FRAME, (finalFrame) => {
-                        // Просто перемотка без анимации
+                    playSegments(segmentsToPlay, (finalFrame) => {
+                        // После окончания последовательности принудительно ставим на 295
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
                         updateUIByFrame(START_FRAME);
                     });
                 }
             });
-            // Помещаем в центр
             centerDiv.appendChild(homeBtn);
         }
         
@@ -289,7 +343,7 @@
             });
         }
         
-        // Режим двора: кнопки перехода между очередями и кнопка "Генплан" в центре
+        // Режим двора: кнопки перехода между очередями и кнопка "Генплан"
         function renderYardButtons(currentQueue) {
             // Кнопки перехода к другим очередям
             const otherQueues = [];
@@ -339,8 +393,7 @@
         function updateUIByFrame(currentFrame) {
             clearInterface();
             
-            // Списки кадров
-            const navFrames = [295, 344, 465, 690, 780, 820, 993, 1035, 1090, 1135, 1183, 1225];
+            // Списки кадров для разных режимов
             const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
             const yardFrames = {
                 1405: 1, 2676: 1, 3060: 1,
@@ -355,35 +408,35 @@
             } else if (genplanQueueFrames.includes(currentFrame)) {
                 currentState = "genplan";
                 selectedQueue = null;
-            } else if (navFrames.includes(currentFrame)) {
-                currentState = "genplan";
-                selectedQueue = null;
             } else {
-                // Неизвестный кадр — считаем генпланом без навигации
+                // Промежуточные кадры (навигационные) — тоже считаем генпланом, но без очередей
                 currentState = "genplan";
                 selectedQueue = null;
             }
             
-            // Рендерим кнопки навигации (влево/вправо) только если кадр в navFrames
-            if (navFrames.includes(currentFrame)) {
-                renderNavButtons(currentFrame);
-            }
+            // Всегда рендерим кнопки навигации (влево/вправо), если для этого кадра есть правила
+            renderNavButtons(currentFrame);
             
             // Рендерим центральные кнопки
             if (currentState === "genplan") {
                 if (genplanQueueFrames.includes(currentFrame)) {
                     renderGenplanQueueButtons();
-                } else if (!navFrames.includes(currentFrame)) {
-                    // На кадрах, где нет ни навигации, ни очередей, предлагаем вернуться на главную
-                    renderHomeButton();
+                } else {
+                    // Если нет очередей и нет навигации? Но навигация уже есть. Добавим кнопку "На главную" если нужно
+                    // Однако на навигационных кадрах (344,509,690,935,1035,1135) кнопка "На главную" не нужна,
+                    // так как там есть влево/вправо. Но если пользователь забрёл куда-то ещё — добавим.
+                    const navExists = (navLeftDiv.children.length > 0 || navRightDiv.children.length > 0);
+                    if (!navExists) {
+                        addHomeButton();
+                    }
                 }
             } else if (currentState === "yard") {
                 renderYardButtons(selectedQueue);
             }
             
-            // Если навигационных кнопок нет, но кадр не является конечной точкой, возможно нужна кнопка "На главную"
+            // Если навигационных кнопок нет и центр пуст, показываем "На главную"
             if (navLeftDiv.children.length === 0 && navRightDiv.children.length === 0 && centerDiv.children.length === 0) {
-                renderHomeButton();
+                addHomeButton();
             }
         }
         
