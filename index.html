@@ -18,7 +18,7 @@
             font-family: system-ui, 'Segoe UI', sans-serif;
             margin: 0;
             padding: 20px;
-            overflow: hidden; /* запрещаем скролл страницы */
+            overflow: hidden; /* полностью запрещаем скролл страницы */
         }
         .viewer {
             position: relative;
@@ -33,7 +33,7 @@
             position: relative;
             aspect-ratio: 16 / 9;
             background: #000;
-            touch-action: none; /* отключаем скролл на контейнере */
+            touch-action: none; /* отключает скролл на контейнере */
         }
         video {
             position: absolute;
@@ -42,7 +42,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            pointer-events: none; /* видео не перехватывает события */
+            pointer-events: none; /* видео не перехватывает события, всё обрабатывает контейнер */
         }
         .controls {
             display: flex;
@@ -401,11 +401,11 @@
             }
         }
         
-        // ========== УПРАВЛЕНИЕ СВАЙПАМИ (ИНВЕРТИРОВАННЫМИ) НА ВСЕЙ СТРАНИЦЕ, НО С ПРОВЕРКОЙ ОБЛАСТИ ==========
+        // ========== УПРАВЛЕНИЕ СВАЙПАМИ (ИНВЕРТИРОВАННЫМИ) НА ВСЕМ ОКНЕ ==========
         let touchStartX = 0;
         let dragStartX = 0;
         let isDragging = false;
-        let isWithinMedia = false; // флаг, что тач начался внутри mediaContainer
+        let swipeStartedInside = false;
         const SWIPE_THRESHOLD = 50;
         
         function getTransitionForDirection(direction) {
@@ -419,13 +419,11 @@
         
         function onPointerStart(e) {
             if (isPlaying) return;
-            // Проверяем, что цель находится внутри mediaContainer или его потомков
+            // Проверяем, что касание началось внутри mediaContainer (или на дочерних элементах)
             let target = e.target;
             if (!mediaContainer.contains(target)) return;
             
-            isWithinMedia = true;
             e.preventDefault(); // запрещаем скролл
-            
             let clientX;
             if (e.touches) {
                 clientX = e.touches[0].clientX;
@@ -435,10 +433,11 @@
             touchStartX = clientX;
             dragStartX = clientX;
             isDragging = true;
+            swipeStartedInside = true;
         }
         
         function onPointerMove(e) {
-            if (!isDragging || isPlaying || !isWithinMedia) return;
+            if (!isDragging || isPlaying || !swipeStartedInside) return;
             e.preventDefault();
             let currentX, currentY;
             if (e.touches) {
@@ -456,36 +455,37 @@
                     const transition = getTransitionForDirection('left');
                     if (transition && !isPlaying) {
                         isDragging = false;
+                        swipeStartedInside = false;
                         playSegment(transition.start, transition.end);
                     }
                 } else {
                     const transition = getTransitionForDirection('right');
                     if (transition && !isPlaying) {
                         isDragging = false;
+                        swipeStartedInside = false;
                         playSegment(transition.start, transition.end);
                     }
                 }
                 isDragging = false;
+                swipeStartedInside = false;
             }
         }
         
         function onPointerEnd(e) {
             isDragging = false;
-            isWithinMedia = false;
+            swipeStartedInside = false;
             e.preventDefault();
         }
         
-        // Навешиваем обработчики на body, но с проверкой области
-        document.body.addEventListener('touchstart', onPointerStart, { passive: false });
-        document.body.addEventListener('touchmove', onPointerMove, { passive: false });
-        document.body.addEventListener('touchend', onPointerEnd);
-        document.body.addEventListener('mousedown', onPointerStart);
+        // Навешиваем обработчики на window, но с проверкой начала внутри mediaContainer
+        window.addEventListener('touchstart', onPointerStart, { passive: false });
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerEnd);
+        window.addEventListener('mousedown', onPointerStart);
         window.addEventListener('mousemove', onPointerMove);
         window.addEventListener('mouseup', onPointerEnd);
-        // Отключаем скролл колесика на всей странице (опционально)
-        window.addEventListener('wheel', (e) => {
-            if (mediaContainer.contains(e.target)) e.preventDefault();
-        }, { passive: false });
+        // Отключаем скролл колесика на контейнере
+        mediaContainer.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
         
         // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
