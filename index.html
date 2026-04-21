@@ -55,7 +55,7 @@
         }
         .nav-left, .nav-right {
             flex: 0 0 auto;
-            min-width: 100px;
+            min-width: 140px;
             text-align: center;
         }
         .center-buttons {
@@ -77,6 +77,8 @@
             transition: 0.2s;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             white-space: nowrap;
+            min-width: 140px;
+            text-align: center;
         }
         button:hover:not(:disabled) {
             background: #f0f0f0;
@@ -138,6 +140,14 @@
             .controls {
                 flex-direction: column;
                 align-items: stretch;
+            }
+            .nav-left, .nav-right {
+                min-width: auto;
+            }
+            button {
+                min-width: 110px;
+                padding: 8px 16px;
+                font-size: 0.9rem;
             }
             .nav-left, .nav-right, .center-buttons {
                 justify-content: center;
@@ -336,7 +346,6 @@
         }
         
         function renderYardButtons(currentQueue) {
-            // Функция для создания кнопки перехода к определённой очереди
             function makeQueueButton(target) {
                 let start, end;
                 if (currentQueue === 1 && target === 2) { start = 2330; end = 2360; }
@@ -356,20 +365,18 @@
                 return btn;
             }
             
-            // Определяем порядок в зависимости от текущей очереди
             let order = [];
             if (currentQueue === 1) {
-                order = [2, 3]; // сначала очередь 2, потом Генплан, потом очередь 3
+                order = [2, 3];
             } else if (currentQueue === 2) {
-                order = [3, 1]; // сначала очередь 3, потом Генплан, потом очередь 1
-            } else { // 3
-                order = [1, 2]; // сначала очередь 1, потом Генплан, потом очередь 2
+                order = [3, 1];
+            } else {
+                order = [1, 2];
             }
             
             const btn1 = makeQueueButton(order[0]);
             if (btn1) centerDiv.appendChild(btn1);
             
-            // Кнопка "Генплан"
             const backBtn = document.createElement('button');
             backBtn.textContent = "Генплан";
             backBtn.style.background = "white";
