@@ -175,10 +175,9 @@
 
 <script>
     (function() {
-        // ======================= КОНФИГУРАЦИЯ =======================
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
-        const START_FRAME = 270;          // стартовый кадр (генплан)
+        const START_FRAME = 270;
         
         let currentState = "genplan";
         let selectedQueue = null;
@@ -201,7 +200,7 @@
             frameCounterDiv.textContent = `Кадр: ${currentFrame} | ${video.paused ? 'Пауза' : 'Играет'}`;
         }
         
-        // Воспроизведение последовательности отрезков
+        // Исправленная функция воспроизведения с гарантированной остановкой
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
             isPlaying = true;
@@ -212,16 +211,35 @@
                     const startTime = frameToTime(seg.start);
                     const endTime = frameToTime(seg.end);
                     video.currentTime = startTime;
+                    
+                    let finished = false;
                     const onUpdate = () => {
+                        if (finished) return;
                         if (video.currentTime >= endTime) {
+                            finished = true;
                             video.removeEventListener('timeupdate', onUpdate);
+                            video.pause();
+                            video.currentTime = endTime; // фиксация на конечном кадре
                             resolve();
                         }
                     };
                     video.addEventListener('timeupdate', onUpdate);
+                    // Таймер на случай, если событие не сработает
+                    const timeout = setTimeout(() => {
+                        if (!finished) {
+                            finished = true;
+                            video.removeEventListener('timeupdate', onUpdate);
+                            video.pause();
+                            video.currentTime = endTime;
+                            resolve();
+                        }
+                    }, (seg.end - seg.start) / FPS * 1000 + 200);
+                    
                     video.play().catch(err => {
                         console.warn(err);
+                        clearTimeout(timeout);
                         video.removeEventListener('timeupdate', onUpdate);
+                        finished = true;
                         resolve();
                     });
                 });
@@ -229,6 +247,8 @@
             isPlaying = false;
             disableAllButtons(false);
             const finalFrame = segmentsList[segmentsList.length-1].end;
+            video.currentTime = frameToTime(finalFrame);
+            video.pause();
             if (finalCallback) finalCallback(finalFrame);
             updateUIByFrame(finalFrame);
         }
@@ -237,24 +257,20 @@
             playSegments([{start, end}], onComplete);
         }
         
-        // ========== ОТРИСОВКА ИНТЕРФЕЙСА ==========
         function clearInterface() {
             navLeftDiv.innerHTML = '';
             navRightDiv.innerHTML = '';
             centerDiv.innerHTML = '';
         }
         
-        // Кнопки навигации
         function renderNavButtons(currentFrame) {
             const navRules = {
-                // Генплановские кадры: вправо начинается с 295
                 270:  { left: [896,935], right: [295,344] },
                 820:  { left: [896,935], right: [295,344] },
                 1225: { left: [896,935], right: [295,344] },
                 1540: { left: [896,935], right: [295,344] },
                 1875: { left: [896,935], right: [295,344] },
                 2128: { left: [896,935], right: [295,344] },
-                // Остальные навигационные кадры
                 344:  { left: [1183,1225], right: [465,509] },
                 1135: { left: [1183,1225], right: [465,509] },
                 509:  { left: [1090,1135], right: [645,690] },
@@ -279,7 +295,6 @@
             }
         }
         
-        // Кнопка "На главную" (возврат на START_FRAME = 270)
         function addHomeButton(currentFrame) {
             const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
             if (genplanQueueFrames.includes(currentFrame)) return;
@@ -318,7 +333,6 @@
             centerDiv.appendChild(btn);
         }
         
-        // Кнопки очередей (режим генплана)
         function renderGenplanQueueButtons() {
             [1,2,3].forEach(id => {
                 const btn = document.createElement('button');
@@ -338,7 +352,6 @@
             });
         }
         
-        // Кнопки режима двора
         function renderYardButtons(currentQueue) {
             const others = [];
             if (currentQueue !== 1) others.push(1);
@@ -378,7 +391,6 @@
             centerDiv.appendChild(backBtn);
         }
         
-        // ========== ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ==========
         function updateUIByFrame(currentFrame) {
             clearInterface();
             console.log("updateUIByFrame, кадр:", currentFrame);
@@ -412,7 +424,6 @@
             }
         }
         
-        // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
