@@ -41,7 +41,6 @@
             height: 100%;
             object-fit: cover;
         }
-        /* Общий стиль для всех зон управления */
         .controls-zone {
             display: flex;
             gap: 12px;
@@ -78,6 +77,11 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+        .info-message {
+            color: #aaa;
+            font-size: 14px;
+            padding: 5px 10px;
         }
 
         /* Прелоадер */
@@ -125,7 +129,7 @@
 
 <div class="viewer">
     <div class="media-container">
-        <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
+        <video id="mainVideo" src="videos/all_flights.avi" preload="auto" playsinline webkit-playsinline muted></video>
     </div>
     
     <!-- Первая зона: кнопки очередей и кнопка "Генплан" (появляется в режиме двора) -->
@@ -142,22 +146,14 @@
 <script>
     (function() {
         // ======================= КОНФИГУРАЦИЯ =======================
-        const FPS = 30;                         // Частота кадров видео
-        const videoPath = "videos/all_flights.mp4";   // Путь к видео
+        const FPS = 30;                             // Частота кадров видео
+        const videoPath = "videos/all_flights.avi";  // Путь к видео (можно .mp4 или .avi, но рекомендуется MP4)
         
-        // Стартовый кадр (генплан)
-        const START_FRAME = 295;
+        const START_FRAME = 295;                    // Стартовый кадр (генплан)
         
-        // Описание всех переходов между кадрами
-        // Каждый переход: { startFrame, endFrame, onComplete: (frame) => { ... } }
-        // Но для простоты будем использовать функции-обработчики после остановки видео
-        
-        // Состояния:
-        // - "genplan" - режим генплана (показывается зона 2 и зона 1 с тремя кнопками)
-        // - "yard" - режим двора с выбранной очередью (показывается зона 1 с кнопками переходов между очередями и кнопкой "Генплан")
-        
-        let currentState = "genplan";   // genplan или yard
-        let selectedQueue = null;       // 1, 2 или 3 (актуально только в режиме yard)
+        // Состояния
+        let currentState = "genplan";   // "genplan" или "yard"
+        let selectedQueue = null;       // 1, 2 или 3 (актуально для yard)
         let isPlaying = false;           // блокировка кнопок во время проигрывания
         
         const video = document.getElementById('mainVideo');
@@ -169,12 +165,19 @@
             return frame / FPS;
         }
         
+        // Отключение/включение всех кнопок в обеих зонах
+        function disableAllButtons(disabled) {
+            const allBtns = document.querySelectorAll('.controls-zone button');
+            allBtns.forEach(btn => {
+                btn.disabled = disabled;
+            });
+        }
+        
         // Воспроизведение отрезка и вызов callback после остановки
         function playSegment(startFrame, endFrame, onCompleteCallback) {
             if (isPlaying) return;
             isPlaying = true;
             
-            // Отключаем все кнопки (добавим класс или disabled позже)
             disableAllButtons(true);
             
             const startTime = frameToTime(startFrame);
@@ -189,7 +192,7 @@
                     isPlaying = false;
                     disableAllButtons(false);
                     if (onCompleteCallback) onCompleteCallback(endFrame);
-                    // После остановки обновляем UI в зависимости от нового кадра
+                    // Обновляем UI в зависимости от конечного кадра
                     updateUIByFrame(endFrame);
                 }
             };
@@ -203,82 +206,7 @@
             });
         }
         
-        // Отключение/включение всех кнопок в обеих зонах
-        function disableAllButtons(disabled) {
-            const allBtns = document.querySelectorAll('.controls-zone button');
-            allBtns.forEach(btn => {
-                btn.disabled = disabled;
-            });
-        }
-        
-        // Обновление UI в зависимости от текущего кадра (вызывается после остановки видео)
-        function updateUIByFrame(currentFrame) {
-            // Сначала определим, где мы находимся: генплан или двор
-            // Генплан - это кадры: 295, 344, 465, 690, 780, 820, 993, 1035, 1090, 1135, 1183, 1225? 
-            // По описанию: вторая зона (вправо/влево) доступна на генплане (295) и на промежуточных кадрах (344,465,690,780,820,993,1035,1090,1135,1183,1225? Но там ещё 820,1225 - это также кадры, где есть первая зона? 
-            // Упростим: будем считать, что если кадр входит в список "genplanFrames" (где есть навигация вправо/влево), то показываем зону2.
-            // Первая зона (очереди) показывается на кадрах: 295, 820, 1225, 1540, 1875, 2128 (это генпланы после возврата из очередей) и также в режиме двора.
-            // Но в режиме двора первая зона имеет другой набор кнопок.
-            
-            // Список кадров, где доступна навигация вправо/влево (вторая зона)
-            const navFrames = [295, 344, 465, 690, 780, 820, 993, 1035, 1090, 1135, 1183, 1225];
-            // Список кадров, где доступна первая зона (кнопки очередей) в режиме генплана
-            const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
-            // Список кадров, которые являются точками входа в режим двора (после выбора очереди)
-            const yardEntryFrames = [1405, 1718, 2013, 2676, 3060, 2360, 2942, 2484, 2820]; // и другие
-            
-            // Определяем, находимся ли мы в режиме двора (кадр соответствует какой-либо очереди)
-            let inYard = false;
-            let queueForYard = null;
-            // Маппинг кадров дворов к номерам очередей
-            const yardToQueue = {
-                1405: 1, 2676: 1, 3060: 1,
-                1718: 2, 2360: 2, 2942: 2,
-                2013: 3, 2484: 3, 2820: 3
-            };
-            if (yardToQueue.hasOwnProperty(currentFrame)) {
-                inYard = true;
-                queueForYard = yardToQueue[currentFrame];
-                selectedQueue = queueForYard;
-                currentState = "yard";
-            } else if (genplanQueueFrames.includes(currentFrame)) {
-                inYard = false;
-                currentState = "genplan";
-                selectedQueue = null;
-            } else if (navFrames.includes(currentFrame)) {
-                // Промежуточные кадры навигации - тоже генплан (без очередей)
-                inYard = false;
-                currentState = "genplan";
-                selectedQueue = null;
-            } else {
-                // fallback - считаем генпланом
-                inYard = false;
-                currentState = "genplan";
-                selectedQueue = null;
-            }
-            
-            // Обновляем видимость зон
-            if (currentState === "genplan") {
-                // В генплане показываем зону2 только если кадр в navFrames
-                if (navFrames.includes(currentFrame)) {
-                    zone2Div.classList.remove('zone-hidden');
-                } else {
-                    zone2Div.classList.add('zone-hidden');
-                }
-                // Зона1 показывается только на кадрах из genplanQueueFrames
-                if (genplanQueueFrames.includes(currentFrame)) {
-                    zone1Div.classList.remove('zone-hidden');
-                    renderGenplanQueueButtons();
-                } else {
-                    zone1Div.classList.add('zone-hidden');
-                }
-            } else if (currentState === "yard") {
-                // В режиме двора: зона1 видна всегда, зона2 скрыта
-                zone2Div.classList.add('zone-hidden');
-                zone1Div.classList.remove('zone-hidden');
-                renderYardButtons(selectedQueue);
-            }
-        }
+        // ======================= РЕНДЕР КНОПОК =======================
         
         // Рендер кнопок первой зоны в режиме генплана (три кнопки очередей)
         function renderGenplanQueueButtons() {
@@ -293,17 +221,14 @@
                 btn.textContent = q.text;
                 btn.addEventListener('click', () => {
                     if (isPlaying) return;
-                    // Определяем отрезок для подлёта к очереди с генплана
                     let startFrame, endFrame;
                     if (q.id === 1) { startFrame = 1370; endFrame = 1405; }
                     else if (q.id === 2) { startFrame = 1684; endFrame = 1718; }
                     else { startFrame = 1983; endFrame = 2013; }
                     
                     playSegment(startFrame, endFrame, (finalFrame) => {
-                        // После прибытия в режим двора
                         selectedQueue = q.id;
                         currentState = "yard";
-                        // Обновим UI (кадр уже установлен)
                     });
                 });
                 zone1Div.appendChild(btn);
@@ -314,13 +239,11 @@
         function renderYardButtons(currentQueue) {
             zone1Div.innerHTML = '';
             
-            // Кнопки для перехода к другим очередям (если есть)
             const otherQueues = [];
             if (currentQueue !== 1) otherQueues.push({ id: 1, text: "Перейти к очереди 1" });
             if (currentQueue !== 2) otherQueues.push({ id: 2, text: "Перейти к очереди 2" });
             if (currentQueue !== 3) otherQueues.push({ id: 3, text: "Перейти к очереди 3" });
             
-            // Определяем текущий кадр, чтобы выбрать правильный отрезок перехода
             const currentFrame = Math.round(video.currentTime * FPS);
             
             otherQueues.forEach(q => {
@@ -329,8 +252,7 @@
                 btn.addEventListener('click', () => {
                     if (isPlaying) return;
                     let startFrame, endFrame;
-                    // Логика переходов между очередями (из условия)
-                    // Для очереди 1 -> 2, 1->3 и т.д.
+                    // Логика переходов между очередями
                     if (currentQueue === 1 && q.id === 2) { startFrame = 2330; endFrame = 2360; }
                     else if (currentQueue === 1 && q.id === 3) { startFrame = 2784; endFrame = 2820; }
                     else if (currentQueue === 2 && q.id === 1) { startFrame = 3018; endFrame = 3060; }
@@ -343,7 +265,6 @@
                     }
                     playSegment(startFrame, endFrame, (finalFrame) => {
                         selectedQueue = q.id;
-                        // после перехода остаёмся в режиме двора, обновим UI
                     });
                 });
                 zone1Div.appendChild(btn);
@@ -356,7 +277,6 @@
             backBtn.addEventListener('click', () => {
                 if (isPlaying) return;
                 let startFrame, endFrame;
-                // Возврат на генплан в зависимости от текущей выбранной очереди
                 if (selectedQueue === 1) { startFrame = 1507; endFrame = 1540; }
                 else if (selectedQueue === 2) { startFrame = 1845; endFrame = 1875; }
                 else { startFrame = 2091; endFrame = 2128; }
@@ -364,33 +284,22 @@
                 playSegment(startFrame, endFrame, (finalFrame) => {
                     currentState = "genplan";
                     selectedQueue = null;
-                    // после возврата UI обновится автоматически через updateUIByFrame
                 });
             });
             zone1Div.appendChild(backBtn);
         }
         
-        // Рендер кнопок второй зоны (вправо/влево) - вызывается когда зона2 видима
+        // Рендер кнопок второй зоны (вправо/влево) на основе текущего кадра
         function renderNavButtons() {
             const currentFrame = Math.round(video.currentTime * FPS);
             zone2Div.innerHTML = '';
             
-            // Определяем, какие кнопки доступны с текущего кадра
-            // Используем данные из условия
+            // Описание доступных переходов
             const navMap = {
                 295: { right: [295,344], left: [896,935] },
                 344: { right: [465,509], left: [1183,1225] },
                 465: { right: [645,690], left: [1090,1135] },
-                690: { right: [780,820], left: [993,1035] },
-                // Дополнительно: с 780,820 и т.д. по условию не описаны, но добавим для полноты
-                780: { right: null, left: null }, // нет данных
-                820: { right: null, left: null },
-                993: { right: null, left: null },
-                1035: { right: null, left: null },
-                1090: { right: null, left: null },
-                1135: { right: null, left: null },
-                1183: { right: null, left: null },
-                1225: { right: null, left: null }
+                690: { right: [780,820], left: [993,1035] }
             };
             
             const nav = navMap[currentFrame];
@@ -415,26 +324,70 @@
                 }
             }
             
-            // Если нет доступных переходов, показываем заглушку
             if (zone2Div.children.length === 0) {
                 const msg = document.createElement('span');
+                msg.className = 'info-message';
                 msg.textContent = "Нет переходов";
-                msg.style.color = "#aaa";
                 zone2Div.appendChild(msg);
             }
         }
         
-        // Перехватываем обновление UI при изменении кадра (вызывается из updateUIByFrame, а также при старте)
-        // Доработаем updateUIByFrame, чтобы она вызывала renderNavButtons когда зона2 видима
-        const originalUpdateUI = updateUIByFrame;
-        window.updateUIByFrame = function(frame) {
-            originalUpdateUI(frame);
-            if (!zone2Div.classList.contains('zone-hidden')) {
-                renderNavButtons();
+        // ======================= ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ПО КАДРУ =======================
+        function updateUIByFrame(currentFrame) {
+            // Списки кадров
+            const navFrames = [295, 344, 465, 690, 780, 820, 993, 1035, 1090, 1135, 1183, 1225];
+            const genplanQueueFrames = [295, 820, 1225, 1540, 1875, 2128];
+            const yardToQueue = {
+                1405: 1, 2676: 1, 3060: 1,
+                1718: 2, 2360: 2, 2942: 2,
+                2013: 3, 2484: 3, 2820: 3
+            };
+            
+            // Определяем состояние
+            let inYard = false;
+            if (yardToQueue.hasOwnProperty(currentFrame)) {
+                inYard = true;
+                selectedQueue = yardToQueue[currentFrame];
+                currentState = "yard";
+            } else if (genplanQueueFrames.includes(currentFrame)) {
+                inYard = false;
+                currentState = "genplan";
+                selectedQueue = null;
+            } else if (navFrames.includes(currentFrame)) {
+                inYard = false;
+                currentState = "genplan";
+                selectedQueue = null;
+            } else {
+                inYard = false;
+                currentState = "genplan";
+                selectedQueue = null;
             }
-        };
+            
+            // Обновляем видимость зон
+            if (currentState === "genplan") {
+                // Зона2 видна только на кадрах из navFrames
+                if (navFrames.includes(currentFrame)) {
+                    zone2Div.classList.remove('zone-hidden');
+                    renderNavButtons();  // отрисовываем кнопки навигации
+                } else {
+                    zone2Div.classList.add('zone-hidden');
+                }
+                
+                // Зона1 видна только на кадрах из genplanQueueFrames
+                if (genplanQueueFrames.includes(currentFrame)) {
+                    zone1Div.classList.remove('zone-hidden');
+                    renderGenplanQueueButtons();
+                } else {
+                    zone1Div.classList.add('zone-hidden');
+                }
+            } else if (currentState === "yard") {
+                zone2Div.classList.add('zone-hidden');
+                zone1Div.classList.remove('zone-hidden');
+                renderYardButtons(selectedQueue);
+            }
+        }
         
-        // Инициализация видео и прелоадера
+        // ======================= ЗАГРУЗКА ВИДЕО И СТАРТ =======================
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
@@ -451,10 +404,8 @@
                     if (percent >= 100) {
                         clearInterval(interval);
                         preloader.style.display = 'none';
-                        // Устанавливаем начальный кадр
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
-                        // Обновляем UI
                         updateUIByFrame(START_FRAME);
                     }
                 } else {
@@ -477,9 +428,10 @@
         video.addEventListener('loadeddata', () => {
             startPreloaderAndPlay();
         });
-        video.addEventListener('error', () => {
-            console.error('Ошибка загрузки видео');
+        video.addEventListener('error', (e) => {
+            console.error('Ошибка загрузки видео', e);
             preloader.style.display = 'none';
+            alert('Не удалось загрузить видео. Проверьте путь к файлу.');
         });
     })();
 </script>
