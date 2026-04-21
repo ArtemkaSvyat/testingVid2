@@ -196,12 +196,11 @@
         // ========== ОСНОВНАЯ ЛОГИКА ==========
         const FPS = 30;
         const videoPath = "videos/all_flights.mp4";
-        const START_FRAME = 1;   // теперь стартовый кадр 1
+        const START_FRAME = 270;
         
         let currentState = "genplan";
         let selectedQueue = null;
         let isPlaying = false;
-        let currentLoop = null;   // для хранения таймаута/флага лупа
         
         const video = document.getElementById('mainVideo');
         const navLeftDiv = document.getElementById('navLeft');
@@ -214,131 +213,6 @@
         
         function disableAllButtons(disabled) {
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
-        }
-        
-        // Функция для получения следующего кадра из списка всех ключевых
-        let allKeyFrames = [];
-        let nextFrameMap = {}; // current -> next
-        
-        function buildKeyFramesAndMap() {
-            // Собираем все уникальные кадры
-            const framesSet = new Set();
-            framesSet.add(START_FRAME);
-            framesSet.add(270); // добавляем старый стартовый как ориентир
-            
-            // Из navRules
-            const navRules = {
-                270:  { left: [896,935], right: [295,344] },
-                820:  { left: [896,935], right: [295,344] },
-                1225: { left: [896,935], right: [295,344] },
-                1540: { left: [896,935], right: [295,344] },
-                1875: { left: [896,935], right: [295,344] },
-                2128: { left: [896,935], right: [295,344] },
-                344:  { left: [1183,1225], right: [465,509] },
-                1135: { left: [1183,1225], right: [465,509] },
-                509:  { left: [1090,1135], right: [645,690] },
-                1035: { left: [1090,1135], right: [645,690] },
-                690:  { left: [993,1035], right: [780,820] },
-                935:  { left: [993,1035], right: [780,820] }
-            };
-            for (let key in navRules) {
-                let k = parseInt(key);
-                framesSet.add(k);
-                let rule = navRules[key];
-                if (rule.left) { framesSet.add(rule.left[0]); framesSet.add(rule.left[1]); }
-                if (rule.right) { framesSet.add(rule.right[0]); framesSet.add(rule.right[1]); }
-            }
-            // Из yardMap
-            const yardMap = {
-                1405:1, 2676:1, 3060:1,
-                1718:2, 2360:2, 2942:2,
-                2013:3, 2484:3, 2820:3
-            };
-            for (let key in yardMap) {
-                framesSet.add(parseInt(key));
-            }
-            // Добавим последний кадр видео (определим позже, но пока добавим большой)
-            // Будет добавлен при инициализации после получения длительности
-            allKeyFrames = Array.from(framesSet).sort((a,b) => a - b);
-        }
-        
-        function updateNextFrameMap(lastFrame) {
-            // Добавляем последний кадр видео, если его нет
-            if (!allKeyFrames.includes(lastFrame)) {
-                allKeyFrames.push(lastFrame);
-                allKeyFrames.sort((a,b) => a - b);
-            }
-            nextFrameMap = {};
-            for (let i = 0; i < allKeyFrames.length - 1; i++) {
-                nextFrameMap[allKeyFrames[i]] = allKeyFrames[i+1];
-            }
-            // Для последнего кадра нет следующего
-        }
-        
-        // Функция запуска лупа от currentFrame до nextFrame
-        let loopActive = false;
-        let loopTimeout = null;
-        
-        async function startLoop(currentFrame) {
-            // Останавливаем текущий луп
-            if (loopTimeout) {
-                clearTimeout(loopTimeout);
-                loopTimeout = null;
-            }
-            loopActive = false;
-            
-            const nextFrame = nextFrameMap[currentFrame];
-            if (!nextFrame) {
-                // Нет следующего кадра — просто пауза
-                video.pause();
-                return;
-            }
-            if (currentFrame === nextFrame) {
-                video.pause();
-                return;
-            }
-            // Запускаем луп: проигрываем отрезок [currentFrame, nextFrame] и повторяем
-            loopActive = true;
-            const startTime = frameToTime(currentFrame);
-            const endTime = frameToTime(nextFrame);
-            video.currentTime = startTime;
-            
-            const playLoopSegment = () => {
-                if (!loopActive) return;
-                const onUpdate = () => {
-                    if (video.currentTime >= endTime) {
-                        video.removeEventListener('timeupdate', onUpdate);
-                        // Перезапускаем луп
-                        video.currentTime = startTime;
-                        video.play().catch(() => {});
-                        // Снова добавляем обработчик
-                        video.addEventListener('timeupdate', onUpdate);
-                    }
-                };
-                video.addEventListener('timeupdate', onUpdate);
-                video.play().catch(err => console.warn(err));
-                // Сохраняем обработчик для возможной остановки
-                loopTimeout = setTimeout(() => {
-                    video.removeEventListener('timeupdate', onUpdate);
-                    loopActive = false;
-                }, 3600000); // неограниченно, но можно убрать
-            };
-            playLoopSegment();
-        }
-        
-        // Функция для остановки лупа и воспроизведения отрезка (перелёт)
-        function stopLoopAndPlaySegment(startFrame, endFrame, onComplete) {
-            if (loopTimeout) {
-                clearTimeout(loopTimeout);
-                loopTimeout = null;
-            }
-            loopActive = false;
-            // Удаляем все обработчики timeupdate, которые могли быть от лупа
-            // (проще снять все, но осторожно)
-            const oldHandlers = video._loopHandlers;
-            // Временно отключаем все обработчики, но проще пересоздать потом
-            // Для простоты используем флаг и перезапишем
-            playSegments([{start: startFrame, end: endFrame}], onComplete);
         }
         
         async function playSegments(segmentsList, finalCallback) {
@@ -389,8 +263,6 @@
             video.currentTime = frameToTime(finalFrame);
             video.pause();
             if (finalCallback) finalCallback(finalFrame);
-            // После завершения перелёта запускаем луп от конечного кадра
-            startLoop(finalFrame);
             updateUIByFrame(finalFrame);
         }
         
@@ -398,42 +270,6 @@
             playSegments([{start, end}], onComplete);
         }
         
-        // Остальные функции (clearInterface, renderNavButtons, addHomeButton, renderGenplanQueueButtons, renderYardButtons, updateUIByFrame) без изменений, 
-        // но в них вызовы playSegment должны быть заменены на stopLoopAndPlaySegment? Нет, playSegment уже вызывает playSegments, который останавливает луп? 
-        // В текущей реализации playSegments не останавливает луп явно. Нужно при начале любого перелёта вызывать остановку лупа.
-        // Модифицируем playSegment, чтобы перед запуском останавливать луп.
-        const originalPlaySegment = playSegment;
-        window.playSegment = function(start, end, onComplete) {
-            if (loopTimeout) {
-                clearTimeout(loopTimeout);
-                loopTimeout = null;
-            }
-            loopActive = false;
-            // Удаляем обработчики? Пока просто сбрасываем флаг.
-            originalPlaySegment(start, end, onComplete);
-        };
-        // Но нужно переопределить глобально. Проще заменить функцию.
-        // Перепишем playSegment:
-        function newPlaySegment(start, end, onComplete) {
-            if (loopTimeout) {
-                clearTimeout(loopTimeout);
-                loopTimeout = null;
-            }
-            loopActive = false;
-            playSegments([{start, end}], onComplete);
-        }
-        window.playSegment = newPlaySegment;
-        
-        // Аналогично для addHomeButton и других вызовов playSegment – они используют playSegment из замыкания.
-        // Чтобы везде использовалась новая версия, заменим ссылку.
-        // В коде ниже все вызовы playSegment будут использовать новую функцию.
-        
-        // Остальные функции (renderNavButtons, addHomeButton и т.д.) остаются как в исходном файле, 
-        // но используют playSegment (которая теперь останавливает луп).
-        // Для краткости приведу полный код с этими изменениями, но в ответе он будет большим. 
-        // Я предоставлю окончательный файл целиком.
-        
-        // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (без изменений, кроме вызовов playSegment) ==========
         function clearInterface() {
             navLeftDiv.innerHTML = '';
             navRightDiv.innerHTML = '';
@@ -473,7 +309,7 @@
         }
         
         function addHomeButton(currentFrame) {
-            const genplanQueueFrames = [1, 270, 820, 1225, 1540, 1875, 2128];
+            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
             if (genplanQueueFrames.includes(currentFrame)) return;
             
             let segmentsToPlay = null;
@@ -494,7 +330,6 @@
                         playSegments(segmentsToPlay, () => {
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
-                            startLoop(START_FRAME);
                             updateUIByFrame(START_FRAME);
                         });
                     }
@@ -504,7 +339,6 @@
                     if (!isPlaying) {
                         video.currentTime = frameToTime(START_FRAME);
                         video.pause();
-                        startLoop(START_FRAME);
                         updateUIByFrame(START_FRAME);
                     }
                 };
@@ -594,7 +428,7 @@
             clearInterface();
             console.log("updateUIByFrame, кадр:", currentFrame);
             
-            const genplanQueueFrames = [1, 270, 820, 1225, 1540, 1875, 2128];
+            const genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
             const yardMap = {
                 1405:1, 2676:1, 3060:1,
                 1718:2, 2360:2, 2942:2,
@@ -623,10 +457,10 @@
             }
         }
         
-        // ========== ИНИЦИАЛИЗАЦИЯ С ЛУПАМИ ==========
+        // ========== ОЖИДАНИЕ ПОЛНОЙ ГОТОВНОСТИ ВИДЕО ==========
         function waitForVideoReady() {
             return new Promise((resolve) => {
-                if (video.readyState >= 3) {
+                if (video.readyState >= 3) { // HAVE_FUTURE_DATA или HAVE_ENOUGH_DATA
                     resolve();
                     return;
                 }
@@ -635,6 +469,7 @@
                     resolve();
                 };
                 video.addEventListener('canplaythrough', onCanPlayThrough);
+                // Запасной таймер на случай, если canplaythrough не сработает
                 setTimeout(() => {
                     video.removeEventListener('canplaythrough', onCanPlayThrough);
                     resolve();
@@ -654,15 +489,11 @@
                     }
                     if (percent >= 100) {
                         clearInterval(interval);
+                        // Дожидаемся реальной готовности видео
                         waitForVideoReady().then(() => {
-                            // Определяем последний кадр
-                            const lastFrame = Math.floor(video.duration * FPS);
-                            buildKeyFramesAndMap();
-                            updateNextFrameMap(lastFrame);
                             preloader.style.display = 'none';
                             video.currentTime = frameToTime(START_FRAME);
                             video.pause();
-                            startLoop(START_FRAME);
                             setTimeout(() => {
                                 updateUIByFrame(START_FRAME);
                             }, 50);
@@ -672,12 +503,12 @@
                     loadPercent.textContent = '0%';
                 }
             }, 200);
+            // Защита от бесконечной загрузки
             setTimeout(() => {
                 if (preloader.style.display !== 'none') {
                     preloader.style.display = 'none';
                     video.currentTime = frameToTime(START_FRAME);
                     video.pause();
-                    startLoop(START_FRAME);
                     updateUIByFrame(START_FRAME);
                 }
             }, 15000);
@@ -692,16 +523,6 @@
         });
         
         window.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
-        
-        // Переопределяем playSegment глобально
-        window.playSegment = function(start, end, onComplete) {
-            if (loopTimeout) {
-                clearTimeout(loopTimeout);
-                loopTimeout = null;
-            }
-            loopActive = false;
-            playSegments([{start, end}], onComplete);
-        };
     })();
 </script>
 </body>
