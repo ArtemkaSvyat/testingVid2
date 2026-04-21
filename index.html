@@ -123,20 +123,6 @@
             font-size: 24px;
             font-weight: bold;
         }
-        .frame-counter {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.7);
-            color: #0f0;
-            font-family: monospace;
-            font-size: 16px;
-            padding: 5px 10px;
-            border-radius: 8px;
-            z-index: 1000;
-            pointer-events: none;
-            backdrop-filter: blur(4px);
-        }
         @media (max-width: 700px) {
             .controls {
                 flex-direction: column;
@@ -144,11 +130,6 @@
             }
             .nav-left, .nav-right, .center-buttons {
                 justify-content: center;
-            }
-            .frame-counter {
-                font-size: 12px;
-                top: 10px;
-                right: 10px;
             }
         }
     </style>
@@ -164,7 +145,6 @@
 <div class="viewer">
     <div class="media-container">
         <video id="mainVideo" src="videos/all_flights.mp4" preload="auto" playsinline webkit-playsinline muted></video>
-       
     </div>
     <div class="controls" id="controlsPanel">
         <div class="nav-left" id="navLeft"></div>
@@ -188,6 +168,21 @@
         const navRightDiv = document.getElementById('navRight');
         const centerDiv = document.getElementById('centerButtons');
         
+        // Вынесенные правила навигации (используются и для кнопок, и для свайпов)
+        const NAV_RULES = {
+            270:  { left: [896,935], right: [295,344] },
+            820:  { left: [896,935], right: [295,344] },
+            1225: { left: [896,935], right: [295,344] },
+            1540: { left: [896,935], right: [295,344] },
+            1875: { left: [896,935], right: [295,344] },
+            2128: { left: [896,935], right: [295,344] },
+            344:  { left: [1183,1225], right: [465,509] },
+            1135: { left: [1183,1225], right: [465,509] },
+            509:  { left: [1090,1135], right: [645,690] },
+            1035: { left: [1090,1135], right: [645,690] },
+            690:  { left: [993,1035], right: [780,820] },
+            935:  { left: [993,1035], right: [780,820] }
+        };
         
         function frameToTime(frame) { return frame / FPS; }
         
@@ -195,9 +190,6 @@
             document.querySelectorAll('.controls button').forEach(btn => btn.disabled = disabled);
         }
         
-        
-        
-        // Исправленная функция воспроизведения с гарантированной остановкой
         async function playSegments(segmentsList, finalCallback) {
             if (isPlaying) return;
             isPlaying = true;
@@ -216,12 +208,11 @@
                             finished = true;
                             video.removeEventListener('timeupdate', onUpdate);
                             video.pause();
-                            video.currentTime = endTime; // фиксация на конечном кадре
+                            video.currentTime = endTime;
                             resolve();
                         }
                     };
                     video.addEventListener('timeupdate', onUpdate);
-                    // Таймер на случай, если событие не сработает
                     const timeout = setTimeout(() => {
                         if (!finished) {
                             finished = true;
@@ -261,21 +252,7 @@
         }
         
         function renderNavButtons(currentFrame) {
-            const navRules = {
-                270:  { left: [896,935], right: [295,344] },
-                820:  { left: [896,935], right: [295,344] },
-                1225: { left: [896,935], right: [295,344] },
-                1540: { left: [896,935], right: [295,344] },
-                1875: { left: [896,935], right: [295,344] },
-                2128: { left: [896,935], right: [295,344] },
-                344:  { left: [1183,1225], right: [465,509] },
-                1135: { left: [1183,1225], right: [465,509] },
-                509:  { left: [1090,1135], right: [645,690] },
-                1035: { left: [1090,1135], right: [645,690] },
-                690:  { left: [993,1035], right: [780,820] },
-                935:  { left: [993,1035], right: [780,820] }
-            };
-            const rule = navRules[currentFrame];
+            const rule = NAV_RULES[currentFrame];
             if (rule) {
                 if (rule.left) {
                     const btn = document.createElement('button');
@@ -421,6 +398,78 @@
             }
         }
         
+        // ========== УПРАВЛЕНИЕ СВАЙПАМИ И МЫШЬЮ ==========
+        let touchStartX = 0;
+        let dragStartX = 0;
+        let isDragging = false;
+        const SWIPE_THRESHOLD = 50;
+        
+        function getTransitionForDirection(direction) {
+            const currentFrame = Math.round(video.currentTime * FPS);
+            const rule = NAV_RULES[currentFrame];
+            if (rule && rule[direction]) {
+                return { start: rule[direction][0], end: rule[direction][1] };
+            }
+            return null;
+        }
+        
+        function onPointerStart(e) {
+            if (isPlaying) return;
+            let clientX;
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+            } else {
+                clientX = e.clientX;
+                e.preventDefault();
+            }
+            touchStartX = clientX;
+            dragStartX = clientX;
+            isDragging = true;
+        }
+        
+        function onPointerMove(e) {
+            if (!isDragging || isPlaying) return;
+            let currentX, currentY;
+            if (e.touches) {
+                currentX = e.touches[0].clientX;
+                currentY = e.touches[0].clientY;
+            } else {
+                currentX = e.clientX;
+                currentY = e.clientY;
+            }
+            const deltaX = currentX - dragStartX;
+            const deltaY = currentY - touchStartX; // упрощённо, для вертикали используем начальный Y
+            if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < 100) {
+                if (deltaX > 0) {
+                    const transition = getTransitionForDirection('right');
+                    if (transition && !isPlaying) {
+                        isDragging = false;
+                        playSegment(transition.start, transition.end);
+                    }
+                } else {
+                    const transition = getTransitionForDirection('left');
+                    if (transition && !isPlaying) {
+                        isDragging = false;
+                        playSegment(transition.start, transition.end);
+                    }
+                }
+                isDragging = false;
+                if (e.cancelable) e.preventDefault();
+            }
+        }
+        
+        function onPointerEnd() {
+            isDragging = false;
+        }
+        
+        video.addEventListener('touchstart', onPointerStart, { passive: false });
+        video.addEventListener('touchmove', onPointerMove, { passive: false });
+        video.addEventListener('touchend', onPointerEnd);
+        video.addEventListener('mousedown', onPointerStart);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerEnd);
+        
+        // ========== ЗАГРУЗКА ВИДЕО ==========
         const preloader = document.getElementById('preloader');
         const loadPercent = document.getElementById('load-percent');
         
@@ -464,7 +513,6 @@
             preloader.style.display = 'none';
             alert('Ошибка загрузки видео. Проверьте путь: ' + videoPath);
         });
-        
     })();
 </script>
 </body>
