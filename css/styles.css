@@ -159,7 +159,7 @@ button:disabled {
 /* Информационный виджет — поднят выше панели управления */
 .info-widget {
     position: absolute;
-    bottom: 80px;      /* отступ от нижнего края, чтобы не перекрывать панель */
+    bottom: 20px;      /* отступ от нижнего края, чтобы не перекрывать панель */
     right: 30px;
     width: 200px;
     background: white;
@@ -224,7 +224,7 @@ button:disabled {
 /* Свернутая кнопка "i" — тоже поднята выше панели */
 .info-collapsed {
     position: absolute;
-    bottom: 80px;
+    bottom: 20px;
     right: 30px;
     width: 50px;
     height: 50px;
