@@ -48,8 +48,8 @@ video {
     justify-content: space-between;
     gap: 12px;
     padding: 20px;
-    background: rgba(0,0,0,0.7);
-    backdrop-filter: blur(8px);
+    background: none;
+    backdrop-filter: none;
     flex-wrap: wrap;
     z-index: 500;
 }
