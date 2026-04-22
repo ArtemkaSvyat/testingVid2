@@ -292,3 +292,6 @@ button:disabled {
 .info-widget.expanding .widget-content {
     opacity: 0;
 }
+#infoDeadline {
+    display: none;
+}
