@@ -193,19 +193,19 @@ function updateInfoWidget(queueId) {
     const info = queueInfo[queueId];
     if (info) {
         document.getElementById('infoTitle').textContent = `Очередь ${queueId}`;
-        const flatsValue = info.flats;
-        // Если тип "count" или значение – число, выводим "Квартир: X"
-        if (info.type === 'count' || typeof flatsValue === 'number') {
-            document.getElementById('infoFlats').innerHTML = `🏢 Квартир: ${flatsValue}`;
+        const flatsElem = document.getElementById('infoFlats');
+        // Очищаем перед вставкой
+        flatsElem.innerHTML = '';
+        if (info.type === 'count') {
+            flatsElem.innerHTML = `🏢 Квартир: ${info.flats}`;
         } else {
-            // Для текстового значения выводим только его (без "Квартир:")
-            document.getElementById('infoFlats').innerHTML = `🏢 ${flatsValue}`;
+            flatsElem.innerHTML = `🏢 ${info.flats}`;
         }
-        // Скрываем строку со сроком сдачи (если она есть в HTML)
+        // Скрываем дату
         const deadlineElem = document.getElementById('infoDeadline');
         if (deadlineElem) deadlineElem.style.display = 'none';
         
-        // Восстанавливаем состояние (свёрнуто/развёрнуто)
+        // Восстанавливаем состояние
         if (isWidgetCollapsed) {
             widget.style.display = 'none';
             collapsedBtn.style.display = 'flex';
