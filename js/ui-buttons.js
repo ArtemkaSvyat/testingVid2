@@ -132,7 +132,7 @@ function renderYardButtons(currentQueue) {
     if (rightBtn) centerDiv.appendChild(rightBtn);
 }
 
-// ========== ФУНКЦИИ ДЛЯ ВИДЖЕТА ИНФОРМАЦИИ (статический контейнер) ==========
+// ========== ФУНКЦИИ ДЛЯ СТАТИЧЕСКОГО ВИДЖЕТА ==========
 function updateInfoWidget(queueId) {
     const widget = document.getElementById('infoWidget');
     if (!widget) return;
@@ -152,7 +152,7 @@ function removeInfoWidget() {
     if (widget) widget.style.display = 'none';
 }
 
-// Обработчик закрытия виджета (привязываем после загрузки DOM)
+// Закрытие по крестику
 document.addEventListener('DOMContentLoaded', function() {
     const closeBtn = document.getElementById('closeInfoBtn');
     if (closeBtn) {
