@@ -40,3 +40,5 @@ var queueInfo = {
 var currentState = "genplan";
 var selectedQueue = null;
 var isPlaying = false;
+// Состояние виджета (свернут/развернут)
+var isWidgetCollapsed = false;  // при старте развернут
