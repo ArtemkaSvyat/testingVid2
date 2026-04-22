@@ -29,6 +29,13 @@ var yardMap = {
 // Генплановские кадры (где показываются кнопки очередей)
 var genplanQueueFrames = [270, 820, 1225, 1540, 1875, 2128];
 
+// Информация об очередях (квартиры и срок сдачи)
+var queueInfo = {
+    1: { flats: 124, deadline: "4 кв. 2025" },
+    2: { flats: 98,  deadline: "2 кв. 2026" },
+    3: { flats: 156, deadline: "4 кв. 2026" }
+};
+
 // Глобальные переменные состояния
 var currentState = "genplan";
 var selectedQueue = null;
