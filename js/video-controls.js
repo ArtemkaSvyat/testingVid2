@@ -8,6 +8,7 @@ function disableAllButtons(disabled) {
 }
 
 async function playSegments(segmentsList, finalCallback) {
+    removeInfoWidget(); // <-- добавить эту строку
     if (isPlaying) return;
     isPlaying = true;
     disableAllButtons(true);
