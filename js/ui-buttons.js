@@ -193,17 +193,25 @@ function updateInfoWidget(queueId) {
     const info = queueInfo[queueId];
     if (info) {
         document.getElementById('infoTitle').textContent = `Очередь ${queueId}`;
-        document.getElementById('infoFlats').innerHTML = `🏢 Квартир: ${info.flats}`;
-        document.getElementById('infoDeadline').innerHTML = `📅 Срок сдачи: ${info.deadline}`;
+        const flatsValue = info.flats;
+        // Если тип "count" или значение – число, выводим "Квартир: X"
+        if (info.type === 'count' || typeof flatsValue === 'number') {
+            document.getElementById('infoFlats').innerHTML = `🏢 Квартир: ${flatsValue}`;
+        } else {
+            // Для текстового значения выводим только его (без "Квартир:")
+            document.getElementById('infoFlats').innerHTML = `🏢 ${flatsValue}`;
+        }
+        // Скрываем строку со сроком сдачи (если она есть в HTML)
+        const deadlineElem = document.getElementById('infoDeadline');
+        if (deadlineElem) deadlineElem.style.display = 'none';
         
-        // Восстанавливаем состояние (свернуто или развернуто)
+        // Восстанавливаем состояние (свёрнуто/развёрнуто)
         if (isWidgetCollapsed) {
             widget.style.display = 'none';
             collapsedBtn.style.display = 'flex';
         } else {
             widget.style.display = 'block';
             collapsedBtn.style.display = 'none';
-            // Убираем возможные классы анимации
             widget.classList.remove('collapsed', 'collapsing', 'expanding');
             widget.style.width = '';
             widget.style.height = '';
