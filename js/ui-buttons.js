@@ -132,33 +132,116 @@ function renderYardButtons(currentQueue) {
     if (rightBtn) centerDiv.appendChild(rightBtn);
 }
 
-// ========== ФУНКЦИИ ДЛЯ СТАТИЧЕСКОГО ВИДЖЕТА ==========
+// ========== УПРАВЛЕНИЕ ВИДЖЕТОМ С АНИМАЦИЕЙ ==========
+var isAnimating = false;
+
+function collapseWidget() {
+    if (isAnimating) return;
+    const widget = document.getElementById('infoWidget');
+    const collapsedBtn = document.getElementById('infoCollapsedBtn');
+    if (!widget || widget.style.display !== 'block') return;
+    
+    isAnimating = true;
+    // Этап 1: исчезает содержимое
+    widget.classList.add('collapsing');
+    setTimeout(() => {
+        // Этап 2: сворачиваем виджет до размера кнопки
+        widget.classList.add('collapsed');
+        widget.style.width = '50px';
+        widget.style.height = '50px';
+        widget.style.padding = '0';
+        // Убираем класс collapsing
+        widget.classList.remove('collapsing');
+        // Показываем свернутую кнопку, скрываем виджет
+        widget.style.display = 'none';
+        collapsedBtn.style.display = 'flex';
+        isAnimating = false;
+        isWidgetCollapsed = true;
+    }, 200);
+}
+
+function expandWidget() {
+    if (isAnimating) return;
+    const widget = document.getElementById('infoWidget');
+    const collapsedBtn = document.getElementById('infoCollapsedBtn');
+    if (!widget) return;
+    
+    isAnimating = true;
+    // Скрываем свернутую кнопку
+    collapsedBtn.style.display = 'none';
+    // Показываем виджет, но с прозрачным содержимым
+    widget.style.display = 'block';
+    widget.classList.add('expanding');
+    // Убираем класс collapsed, чтобы вернуть нормальные размеры
+    widget.classList.remove('collapsed');
+    widget.style.width = '';
+    widget.style.height = '';
+    widget.style.padding = '';
+    setTimeout(() => {
+        // Появляется содержимое
+        widget.classList.remove('expanding');
+        isAnimating = false;
+        isWidgetCollapsed = false;
+    }, 200);
+}
+
 function updateInfoWidget(queueId) {
     const widget = document.getElementById('infoWidget');
+    const collapsedBtn = document.getElementById('infoCollapsedBtn');
     if (!widget) return;
+    
     const info = queueInfo[queueId];
     if (info) {
         document.getElementById('infoTitle').textContent = `Очередь ${queueId}`;
         document.getElementById('infoFlats').innerHTML = `🏢 Квартир: ${info.flats}`;
         document.getElementById('infoDeadline').innerHTML = `📅 Срок сдачи: ${info.deadline}`;
-        widget.style.display = 'block';
+        
+        // Восстанавливаем состояние (свернуто или развернуто)
+        if (isWidgetCollapsed) {
+            widget.style.display = 'none';
+            collapsedBtn.style.display = 'flex';
+        } else {
+            widget.style.display = 'block';
+            collapsedBtn.style.display = 'none';
+            // Убираем возможные классы анимации
+            widget.classList.remove('collapsed', 'collapsing', 'expanding');
+            widget.style.width = '';
+            widget.style.height = '';
+            widget.style.padding = '';
+        }
     } else {
         widget.style.display = 'none';
+        collapsedBtn.style.display = 'none';
     }
 }
 
 function removeInfoWidget() {
     const widget = document.getElementById('infoWidget');
+    const collapsedBtn = document.getElementById('infoCollapsedBtn');
     if (widget) widget.style.display = 'none';
+    if (collapsedBtn) collapsedBtn.style.display = 'none';
 }
 
-// Закрытие по крестику
+function restoreInfoWidget() {
+    // Вызывается после перелета, когда нужно восстановить виджет, если мы в режиме двора
+    // Эта функция вызывается из updateUIByFrame, которая сама решает, показывать виджет или нет.
+    // Здесь ничего дополнительного не нужно.
+}
+
+// Обработчик закрытия (крестик)
 document.addEventListener('DOMContentLoaded', function() {
     const closeBtn = document.getElementById('closeInfoBtn');
     if (closeBtn) {
         closeBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            removeInfoWidget();
+            collapseWidget();
+        });
+    }
+    const expandBtn = document.getElementById('infoCollapsedBtn');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            expandWidget();
         });
     }
 });
