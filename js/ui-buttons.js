@@ -131,3 +131,33 @@ function renderYardButtons(currentQueue) {
     const rightBtn = makeQueueButton(rightTarget, 'right');
     if (rightBtn) centerDiv.appendChild(rightBtn);
 }
+
+// ========== ФУНКЦИИ ДЛЯ ВИДЖЕТА ИНФОРМАЦИИ ==========
+function updateInfoWidget(queueId) {
+    let widget = document.querySelector('.info-widget');
+    if (!widget) {
+        widget = document.createElement('div');
+        widget.className = 'info-widget';
+        document.querySelector('.media-container').appendChild(widget);
+    }
+    const info = queueInfo[queueId];
+    if (info) {
+        widget.innerHTML = `
+            <button class="close-widget">✕</button>
+            <h4>Очередь ${queueId}</h4>
+            <p>🏢 Квартир: ${info.flats}</p>
+            <p>📅 Срок сдачи: ${info.deadline}</p>
+        `;
+        widget.querySelector('.close-widget').addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeInfoWidget();
+        });
+    } else {
+        removeInfoWidget();
+    }
+}
+
+function removeInfoWidget() {
+    const widget = document.querySelector('.info-widget');
+    if (widget) widget.remove();
+}
