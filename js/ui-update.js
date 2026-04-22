@@ -2,6 +2,7 @@ function clearInterface() {
     navLeftDiv.innerHTML = '';
     navRightDiv.innerHTML = '';
     centerDiv.innerHTML = '';
+    // Виджет не удаляем здесь, чтобы он не мигал при обновлении интерфейса
 }
 
 function updateUIByFrame(currentFrame) {
@@ -11,9 +12,11 @@ function updateUIByFrame(currentFrame) {
     if (yardMap.hasOwnProperty(currentFrame)) {
         currentState = "yard";
         selectedQueue = yardMap[currentFrame];
+        updateInfoWidget(selectedQueue);   // показываем виджет
     } else {
         currentState = "genplan";
         selectedQueue = null;
+        removeInfoWidget();               // скрываем виджет
     }
 
     renderNavButtons(currentFrame);
