@@ -152,8 +152,8 @@ button:disabled {
 /* Информационный виджет */
 .info-widget {
     position: absolute;
-    top: 20px;
-    right: 20px;
+    bottom: 30px;      /* отступ снизу */
+    right: 30px;       /* отступ справа */
     width: 200px;
     background: white;
     border-radius: 24px;
@@ -166,15 +166,15 @@ button:disabled {
 }
 .info-widget h4 {
     margin: 0 0 8px 0;
-    font-size: 1.1rem;
+    font-size: 1rem;
     color: #1a2a4a;
 }
 .info-widget p {
     margin: 6px 0;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: #1a2a4a;
 }
-.info-widget .close-widget {
+.info-widget .close-info {
     position: absolute;
     top: 8px;
     right: 12px;
@@ -187,20 +187,20 @@ button:disabled {
     min-width: auto;
     box-shadow: none;
 }
-.info-widget .close-widget:hover {
+.info-widget .close-info:hover {
     color: #333;
 }
 @media (max-width: 700px) {
     .info-widget {
         width: 160px;
         padding: 12px;
-        top: 10px;
-        right: 10px;
+        bottom: 20px;
+        right: 20px;
     }
     .info-widget h4 {
-        font-size: 1rem;
+        font-size: 0.9rem;
     }
     .info-widget p {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
     }
 }
