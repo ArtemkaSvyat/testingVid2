@@ -174,7 +174,8 @@ button:disabled {
     font-size: 0.85rem;
     color: #1a2a4a;
 }
-.info-widget .close-info {
+/* Стили для кнопки закрытия виджета (переопределяем общие стили кнопок) */
+.info-widget .close-widget {
     position: absolute;
     top: 8px;
     right: 12px;
@@ -185,10 +186,14 @@ button:disabled {
     color: #888;
     padding: 0;
     min-width: auto;
+    width: auto;
     box-shadow: none;
+    border-radius: 0;
 }
-.info-widget .close-info:hover {
+.info-widget .close-widget:hover {
     color: #333;
+    background: none;
+    transform: none;
 }
 @media (max-width: 700px) {
     .info-widget {
@@ -202,5 +207,10 @@ button:disabled {
     }
     .info-widget p {
         font-size: 0.75rem;
+    }
+    .info-widget .close-widget {
+        font-size: 16px;
+        top: 6px;
+        right: 10px;
     }
 }
