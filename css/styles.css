@@ -214,3 +214,61 @@ button:disabled {
         right: 10px;
     }
 }
+/* Свернутая кнопка "i" */
+.info-collapsed {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    width: 50px;
+    height: 50px;
+    background: white;
+    border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    border: 1px solid #c0c0c0;
+    transition: all 0.2s ease;
+}
+.info-collapsed span {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1a2a4a;
+    font-family: system-ui, 'Segoe UI', sans-serif;
+}
+.info-collapsed:hover {
+    transform: scale(1.05);
+    background: #f0f0f0;
+}
+
+/* Анимации для виджета */
+.info-widget {
+    transition: width 0.3s ease, height 0.3s ease, padding 0.2s ease, opacity 0.2s ease;
+    overflow: hidden;
+}
+.info-widget.collapsing {
+    opacity: 0;
+}
+.info-widget.collapsed {
+    width: 50px;
+    height: 50px;
+    padding: 0;
+    overflow: hidden;
+}
+/* Контент внутри виджета при сворачивании скрывается */
+.info-widget.collapsed h4,
+.info-widget.collapsed p,
+.info-widget.collapsed .close-widget {
+    display: none;
+}
+
+/* Анимация появления содержимого при разворачивании */
+.info-widget .widget-content {
+    opacity: 1;
+    transition: opacity 0.2s ease;
+}
+.info-widget.expanding .widget-content {
+    opacity: 0;
+}
