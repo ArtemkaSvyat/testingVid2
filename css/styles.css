@@ -1,6 +1,9 @@
 * {
     box-sizing: border-box;
-    user-select: none;
+    user-select: none;                /* запрет выделения текста */
+    -webkit-user-select: none;        /* для старых Safari */
+    -webkit-touch-callout: none;      /* отключает меню при долгом нажатии на iOS */
+    -webkit-tap-highlight-color: transparent; /* убирает серый фон при касании */
     touch-action: manipulation;
 }
 body {
