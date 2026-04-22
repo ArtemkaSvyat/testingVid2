@@ -132,32 +132,33 @@ function renderYardButtons(currentQueue) {
     if (rightBtn) centerDiv.appendChild(rightBtn);
 }
 
-// ========== ФУНКЦИИ ДЛЯ ВИДЖЕТА ИНФОРМАЦИИ ==========
+// ========== ФУНКЦИИ ДЛЯ ВИДЖЕТА ИНФОРМАЦИИ (статический контейнер) ==========
 function updateInfoWidget(queueId) {
-    let widget = document.querySelector('.info-widget');
-    if (!widget) {
-        widget = document.createElement('div');
-        widget.className = 'info-widget';
-        document.querySelector('.media-container').appendChild(widget);
-    }
+    const widget = document.getElementById('infoWidget');
+    if (!widget) return;
     const info = queueInfo[queueId];
     if (info) {
-        widget.innerHTML = `
-            <button class="close-widget">✕</button>
-            <h4>Очередь ${queueId}</h4>
-            <p>🏢 Квартир: ${info.flats}</p>
-            <p>📅 Срок сдачи: ${info.deadline}</p>
-        `;
-        widget.querySelector('.close-widget').addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeInfoWidget();
-        });
+        document.getElementById('infoTitle').textContent = `Очередь ${queueId}`;
+        document.getElementById('infoFlats').innerHTML = `🏢 Квартир: ${info.flats}`;
+        document.getElementById('infoDeadline').innerHTML = `📅 Срок сдачи: ${info.deadline}`;
+        widget.style.display = 'block';
     } else {
-        removeInfoWidget();
+        widget.style.display = 'none';
     }
 }
 
 function removeInfoWidget() {
-    const widget = document.querySelector('.info-widget');
-    if (widget) widget.remove();
+    const widget = document.getElementById('infoWidget');
+    if (widget) widget.style.display = 'none';
 }
+
+// Обработчик закрытия виджета (привязываем после загрузки DOM)
+document.addEventListener('DOMContentLoaded', function() {
+    const closeBtn = document.getElementById('closeInfoBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            removeInfoWidget();
+        });
+    }
+});
